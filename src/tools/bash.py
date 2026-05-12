@@ -61,7 +61,7 @@ class Bash(BaseModel):
         # 创建子进程执行
         try:
             process = await asyncio.create_subprocess_exec(
-                *bash_params.command,
+                "bash", "-c", *bash_params.command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 # 指定运行目录为工作空间
