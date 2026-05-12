@@ -1,7 +1,6 @@
 import json
 import os
 import pathlib
-from tarfile import AbsoluteLinkError
 from typing import Any
 
 import aiofiles
