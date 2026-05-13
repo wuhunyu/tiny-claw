@@ -21,10 +21,14 @@ class EditFile(BaseModel):
     def name(self) -> str:
         return "edit_file"
 
+    def readonly(self) -> bool:
+        return False
+
     def definition(self) -> ToolDefinition:
         return ToolDefinition(
             name=self.name(),
             description="对现有文件进行局部的字符串替换。这比重写整个文件更安全、更快速。请提供足够的 old_text 上下文以确保匹配的唯一性。",
+            is_readonly=self.readonly(),
             input_schema={
                 "type": "object",
                 "properties": {

@@ -21,10 +21,14 @@ class Bash(BaseModel):
     def name(self) -> str:
         return "bash"
 
+    def readonly(self) -> bool:
+        return False
+
     def definition(self) -> ToolDefinition:
         return ToolDefinition(
             name=self.name(),
             description="执行 bash 命令",
+            is_readonly=self.readonly(),
             input_schema={
                 "type": "object",
                 "properties": {

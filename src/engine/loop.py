@@ -1,7 +1,8 @@
+import asyncio
 import os
 
 from src.provider.interface import LLMProvider
-from src.schema.message import Role, Message
+from src.schema.message import Role, Message, ToolCall, ToolResult
 from src.tools.registry import Registry
 
 
@@ -69,15 +70,50 @@ class AgentEngine:
                 break
 
             print(f"[Engine] 模型请求调用 {len(action_resp.tool_calls)} 个工具...")
+
+            # 判断本次所有的 tool 是否为 readonly
+            available_tool_dict = {tool.name: tool for tool in available_tools}
+            is_all_readonly = True
             for tool_call in action_resp.tool_calls:
-                print(f"-> 🛠️ 执行工具: {tool_call.name}, 参数: {tool_call.arguments}")
-                tool_result = await self.registry.execute(tool_call)
-                if not tool_result.is_error:
-                    print(f"-> ✅ 工具执行成功 (返回 {len(tool_result.output)} 字节)")
+                tool = available_tool_dict.get(tool_call.name, None)
+                if not tool or not tool.is_readonly:
+                    is_all_readonly = False
+                    break
+
+            def handle_tool_result(tc: ToolCall, tr: ToolResult) -> Message:
+                if not tr.is_error:
+                    print(f"-> ✅ 工具执行成功 (返回 {len(tr.output)} 字节)")
                 else:
-                    print(f"-> ❌ 工具执行失败: {tool_result.output}")
-                context_history.append(Message(
+                    print(f"-> ❌ 工具执行失败: {tr.output}")
+                return Message(
                     role=Role.ROLE_TOOL,
-                    tool_call_id=tool_call.id,
-                    content=tool_result.output,
-                ))
+                    tool_call_id=tc.id,
+                    content=tr.output,
+                )
+
+            if is_all_readonly:
+                # 并发读
+                async def wrap_tool_execute(tc: ToolCall) -> ToolResult:
+                    print(f"-> 🛠️ 并发执行工具: {tc.name}, 参数: {tc.arguments}")
+                    return await self.registry.execute(tc)
+
+                tasks = [
+                    asyncio.create_task(wrap_tool_execute(tool_call))
+                    for tool_call in action_resp.tool_calls
+                ]
+                tool_results = await asyncio.gather(*tasks, return_exceptions=True)
+                for tool_call, tool_result in zip(action_resp.tool_calls, tool_results):
+                    if isinstance(tool_result, Exception):
+                        context_history.append(Message(
+                            role=Role.ROLE_TOOL,
+                            tool_call_id=tool_call.id,
+                            content=f"工具 {tool_call.name} 执行失败: {tool_result!r}",
+                        ))
+                    else:
+                        context_history.append(handle_tool_result(tool_call, tool_result))
+            else:
+                # 串行执行
+                for tool_call in action_resp.tool_calls:
+                    print(f"-> 🛠️ 串行执行工具: {tool_call.name}, 参数: {tool_call.arguments}")
+                    tool_result = await self.registry.execute(tool_call)
+                    context_history.append(handle_tool_result(tool_call, tool_result))

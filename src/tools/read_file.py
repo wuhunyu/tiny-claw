@@ -21,10 +21,14 @@ class ReadFile(BaseModel):
     def name(self) -> str:
         return "read_file"
 
+    def readonly(self) -> bool:
+        return True
+
     def definition(self) -> ToolDefinition:
         return ToolDefinition(
             name=self.name(),
             description="读取指定文件内容",
+            is_readonly=self.readonly(),
             input_schema={
                 "type": "object",
                 "properties": {

@@ -7,6 +7,9 @@ class BaseTool(Protocol):
     def name(self) -> str:
         ...
 
+    def readonly(self) -> bool:
+        ...
+
     def definition(self) -> ToolDefinition:
         ...
 

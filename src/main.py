@@ -16,7 +16,6 @@ async def main():
     work_dir = os.getenv("WORK_DIR", os.getcwd())
     # 获取绝对路径
     work_dir = str(pathlib.Path(work_dir).expanduser().resolve())
-    print(f"当前工作区: {work_dir}")
 
     # llm client
     chat_client = MyChat(
@@ -35,12 +34,12 @@ async def main():
         provider=chat_client,
         registry=registry,
         work_dir=work_dir,
-        enable_thinking=os.getenv("ENABLE_THINKING", False),
+        enable_thinking=os.getenv("ENABLE_THINKING", True),
     )
 
     prompt = """
-    当前目录下有一个 message.go 文件
-    请完善代码注释
+    我当前目录下有 a.txt, b.txt, c.txt 三个文件。 
+    为了节省时间，请你同时一次性读取这三个文件，并将它们的内容综合起来，告诉我它们分别记录了什么领域的信息。
     """
     await engine.run(prompt)
 

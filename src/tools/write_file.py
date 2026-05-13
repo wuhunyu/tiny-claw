@@ -19,10 +19,14 @@ class WriteFile(BaseModel):
     def name(self) -> str:
         return "write_file"
 
+    def readonly(self) -> bool:
+        return False
+
     def definition(self) -> ToolDefinition:
         return ToolDefinition(
             name=self.name(),
             description="创建或覆盖写入一个文件。如果目录不存在会自动创建",
+            is_readonly=self.readonly(),
             input_schema={
                 "type": "object",
                 "properties": {
