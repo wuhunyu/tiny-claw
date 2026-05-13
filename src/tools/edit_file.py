@@ -5,6 +5,7 @@ import aiofiles
 from pydantic import BaseModel, Field, ValidationError
 
 from src.schema.message import ToolDefinition
+from src.util.path_util import absolute_path
 
 
 class EditFileParams(BaseModel):
@@ -63,14 +64,15 @@ class EditFile(BaseModel):
         print(f"-> 运行 {self.name()} 命令: {arguments}")
 
         # 路径判断
-        absolute_work_dir = pathlib.Path(self.work_dir).expanduser().resolve()
-        input_path = pathlib.Path(edit_file_params.file_name).expanduser()
-        if not input_path.is_absolute():
-            input_path = absolute_work_dir / input_path
-        target_path = input_path.resolve()
-        if not target_path.is_relative_to(absolute_work_dir):
-            raise ValueError(f"文件 {edit_file_params.file_name} 不在工作区 {self.work_dir} 下")
+        try:
+            absolute_path_file = absolute_path(
+                self.work_dir,
+                edit_file_params.file_name
+            )
+        except IOError:
+            raise
 
+        target_path = pathlib.Path(absolute_path_file)
         # 判断文件是否存在
         if not target_path.exists():
             raise ValueError(f"文件 {edit_file_params.file_name} 不存在")

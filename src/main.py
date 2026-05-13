@@ -39,12 +39,8 @@ async def main():
     )
 
     prompt = """
-    我当前目录下有一个 server.go 文件。 
-    请帮我把里面 "TODO: 增加鉴权逻辑" 下面的那个 if 语句，整个替换为： 
-    if user == nil {
-        fmt.Println("Forbidden!")
-        return
-    }
+    当前目录下有一个 message.go 文件
+    请完善代码注释
     """
     await engine.run(prompt)
 

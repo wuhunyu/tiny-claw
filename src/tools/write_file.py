@@ -5,6 +5,7 @@ import aiofiles.os
 from pydantic import BaseModel, Field, ValidationError
 
 from src.schema.message import ToolDefinition
+from src.util.path_util import absolute_path
 
 
 class WriteFileParams(BaseModel):
@@ -55,14 +56,15 @@ class WriteFile(BaseModel):
             raise ValueError("file_name 和 content 格式错误")
 
         # 路径判断
-        absolute_work_dir = pathlib.Path(self.work_dir).expanduser().resolve()
-        input_path = pathlib.Path(write_file_params.file_name).expanduser()
-        if not input_path.is_absolute():
-            input_path = absolute_work_dir / input_path
-        target_path = input_path.resolve()
-        if not target_path.is_relative_to(absolute_work_dir):
-            raise ValueError(f"文件 {write_file_params.file_name} 不在工作区 {self.work_dir} 下")
+        try:
+            absolute_path_file = absolute_path(
+                self.work_dir,
+                write_file_params.file_name
+            )
+        except IOError:
+            raise
 
+        target_path = pathlib.Path(absolute_path_file)
         # 创建父目录
         try:
             await aiofiles.os.makedirs(target_path.parent, exist_ok=True)
