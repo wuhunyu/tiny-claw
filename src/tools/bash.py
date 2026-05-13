@@ -54,9 +54,9 @@ class Bash(BaseModel):
             except ValidationError as e:
                 raise ValueError(f"{self.name()} 参数格式错误: {e}")
         else:
-            raise ValueError("command 格式错误")
+            raise ValueError(f"{self.name()} 格式错误")
 
-        print(f"-> 运行 bash 命令: {' '.join(bash_params.command)}")
+        print(f"-> 运行 {self.name()} 命令: {' '.join(bash_params.command)}")
 
         # 创建子进程执行
         try:
