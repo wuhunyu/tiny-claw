@@ -1,3 +1,4 @@
+import logging
 import pathlib
 from typing import Any
 
@@ -6,6 +7,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from src.schema.message import ToolDefinition
 from src.util.path_util import absolute_path
+
+logger = logging.getLogger(__name__)
 
 
 class EditFileParams(BaseModel):
@@ -28,7 +31,7 @@ class EditFile(BaseModel):
         return ToolDefinition(
             name=self.name(),
             description="对现有文件进行局部的字符串替换。这比重写整个文件更安全、更快速。请提供足够的 old_text 上下文以确保匹配的唯一性。",
-            is_readonly=self.readonly(),
+            readonly=self.readonly(),
             input_schema={
                 "type": "object",
                 "properties": {
@@ -51,21 +54,25 @@ class EditFile(BaseModel):
 
     async def execute(self, arguments: dict[str, Any] | str | None) -> str:
         if not arguments:
+            logger.info("请指定 file_name && old_text && new_text")
             raise ValueError("请指定 file_name && old_text && new_text")
         if isinstance(arguments, dict):
             try:
                 edit_file_params = EditFileParams.model_validate(arguments)
             except ValidationError as e:
+                logger.info(f"{self.name()} 参数格式错误: {e}")
                 raise ValueError(f"{self.name()} 参数格式错误: {e}")
         elif isinstance(arguments, str):
             try:
                 edit_file_params = EditFileParams.model_validate_json(arguments)
             except ValidationError as e:
+                logger.info(f"{self.name()} 输入参数格式错误: {e}")
                 raise ValueError(f"{self.name()} 参数格式错误: {e}")
         else:
+            logger.warning(f"{self.name()} 输入格式错误")
             raise ValueError(f"{self.name()} 格式错误")
 
-        print(f"-> 运行 {self.name()} 命令: {arguments}")
+        logger.info(f"-> 运行 {self.name()} 命令: {arguments}")
 
         # 路径判断
         try:
@@ -74,13 +81,16 @@ class EditFile(BaseModel):
                 edit_file_params.file_name
             )
         except IOError:
+            logger.info(f"文件 {edit_file_params.file_name} 路径错误", exc_info=True)
             raise
 
         target_path = pathlib.Path(absolute_path_file)
         # 判断文件是否存在
         if not target_path.exists():
+            logger.info(f"文件 {edit_file_params.file_name} 不存在")
             raise ValueError(f"文件 {edit_file_params.file_name} 不存在")
         if not target_path.is_file():
+            logger.info(f"文件 {edit_file_params.file_name} 不是一个文件")
             raise ValueError(f"文件 {edit_file_params.file_name} 不是一个文件")
 
         async with aiofiles.open(target_path, "r+", encoding="utf-8") as f:
@@ -101,6 +111,7 @@ class EditFile(BaseModel):
         if count == 1:
             return original_text.replace(old_text, new_text, 1)
         if count > 1:
+            logger.info(f"old_text 匹配到了 {count} 处")
             raise ValueError(f"old_text 匹配到了 {count} 处，请提供更多的上下文代码以确保唯一性")
 
         # 第二阶段: 换行符归一化(统一将 \r\n 转换成 \n)
@@ -128,6 +139,7 @@ class EditFile(BaseModel):
         old_text_lines = [line.strip() for line in old_text.split("\n")]
         m, n = len(original_text_lines), len(old_text_lines)
         if n == 0 or m < n:
+            logger.info("old_text 缺少内容")
             raise ValueError("找不到该代码片段")
 
         match_count = 0
@@ -147,8 +159,10 @@ class EditFile(BaseModel):
                 match_end = i + n
 
         if not match_count:
+            logger.info("未找到 old_text")
             raise ValueError("在文件中未找到 old_text，请大模型先调用 read_file 仔细确认文件内容和缩进")
         if match_count > 1:
+            logger.info(f"模糊匹配到了 {match_count} 处相似代码")
             raise ValueError(f"模糊匹配到了 {match_count} 处相似代码，请提供更多上下行代码以精确定位")
 
         # 拼接结果

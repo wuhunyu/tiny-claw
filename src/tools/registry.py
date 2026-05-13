@@ -1,6 +1,9 @@
+import logging
 from typing import Protocol, Any
 
 from src.schema.message import ToolDefinition, ToolCall, ToolResult
+
+logger = logging.getLogger(__name__)
 
 
 class BaseTool(Protocol):
@@ -35,7 +38,7 @@ class RegistryImpl:
         if not tool:
             raise ValueError("工具不能为空")
         if tool.name() in self._tools:
-            print(f"[Registry] 工具 {tool.name()} 已存在，将要执行覆盖")
+            logger.info(f"[Registry] 工具 {tool.name()} 已存在，将要执行覆盖")
         self._tools[tool.name()] = tool
 
     async def get_available_tools(self) -> list[ToolDefinition]:

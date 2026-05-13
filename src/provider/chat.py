@@ -1,3 +1,4 @@
+import logging
 import os
 from enum import Enum
 
@@ -5,6 +6,8 @@ from litellm import acompletion
 from pydantic import BaseModel, Field
 
 from src.schema.message import Message, ToolDefinition, Role, ToolCall
+
+logger = logging.getLogger(__name__)
 
 
 class Provider(str, Enum):
@@ -86,9 +89,11 @@ class MyChat(BaseModel):
                 tools=tool_defines,
             )
         except Exception as e:
+            logger.exception(f"{self.llm_provider.value} API 响应失败")
             raise ValueError(f"{self.llm_provider.value} API 请求失败", e)
 
         if not openai_res.choices:
+            logger.exception(f"{self.llm_provider.value} API 响应结果为空")
             raise ValueError(f"{self.llm_provider.value} API 响应结果为空")
 
         res_message = openai_res.choices[0].message

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import signal
 from typing import Any
@@ -6,6 +7,8 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationError
 
 from src.schema.message import ToolDefinition
+
+logger = logging.getLogger(__name__)
 
 MAX_LEN = 8000
 
@@ -28,7 +31,7 @@ class Bash(BaseModel):
         return ToolDefinition(
             name=self.name(),
             description="执行 bash 命令",
-            is_readonly=self.readonly(),
+            readonly=self.readonly(),
             input_schema={
                 "type": "object",
                 "properties": {
@@ -46,21 +49,25 @@ class Bash(BaseModel):
 
     async def execute(self, arguments: dict[str, Any] | str | None) -> str:
         if not arguments:
+            logger.info("请指定 command")
             raise ValueError("请指定 command")
         if isinstance(arguments, dict):
             try:
                 bash_params = BashParams.model_validate(arguments)
             except ValidationError as e:
+                logger.info(f"{self.name()} 输入参数格式错误: {e}")
                 raise ValueError(f"{self.name()} 参数格式错误: {e}")
         elif isinstance(arguments, str):
             try:
                 bash_params = BashParams.model_validate_json(arguments)
             except ValidationError as e:
+                logger.info(f"{self.name()} 参数格式错误: {e}")
                 raise ValueError(f"{self.name()} 参数格式错误: {e}")
         else:
+            logger.warning(f"{self.name()} 格式错误")
             raise ValueError(f"{self.name()} 格式错误")
 
-        print(f"-> 运行 {self.name()} 命令: {' '.join(bash_params.command)}")
+        logger.info(f"-> 运行 {self.name()} 命令: {' '.join(bash_params.command)}")
 
         # 创建子进程执行
         try:
@@ -73,6 +80,7 @@ class Bash(BaseModel):
                 preexec_fn=os.setsid,
             )
         except Exception as e:
+            logger.exception(f"创建子进程失败: {bash_params.command}")
             raise ValueError(f"创建子进程失败: {bash_params.command}", e)
 
         try:
@@ -84,24 +92,27 @@ class Bash(BaseModel):
         except asyncio.TimeoutError:
             self._kill_process_group(process)
             await process.wait()
+            logger.warning(f"执行超时({self.timeout}s): {bash_params.command}", exc_info=True)
             return f"执行超时({self.timeout}s): {bash_params.command}"
         except Exception as e:
             self._kill_process_group(process)
             await process.wait()
+            logger.warning(f"执行失败: {bash_params.command}", exc_info=True)
             return f"执行失败: {bash_params.command}\n{e}"
 
         stdout = stdout_bytes.decode('utf-8', errors='replace')
         stderr = stderr_bytes.decode('utf-8', errors='replace')
         if process.returncode != 0:
             # 错误原样返回, 依赖 Self-Correction 自愈机制
+            logger.warning(f"执行失败: {bash_params.command}\n{stderr}", exc_info=True)
             return f"执行失败: {bash_params.command}\n{stderr}"
         if not stdout:
             return f"执行成功: {bash_params.command}"
         # 超长截断
         if len(stdout) > MAX_LEN:
-            print(f"-> 执行成功: {stdout[:MAX_LEN]}")
+            logger.info(f"-> 执行成功: {stdout[:MAX_LEN]}")
             return f"执行成功: {stdout[:MAX_LEN]}...[由于内容过长，已被系统截断至前 {MAX_LEN} 字节]..."
-        print(f"-> 执行成功: {stdout}")
+        logger.info(f"-> 执行成功: {stdout}")
         return f"执行成功: {bash_params.command}\n{stdout}"
 
     def _kill_process_group(self, process: asyncio.subprocess.Process) -> None:

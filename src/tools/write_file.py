@@ -1,3 +1,4 @@
+import logging
 import pathlib
 from typing import Any
 
@@ -6,6 +7,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from src.schema.message import ToolDefinition
 from src.util.path_util import absolute_path
+
+logger = logging.getLogger(__name__)
 
 
 class WriteFileParams(BaseModel):
@@ -26,7 +29,7 @@ class WriteFile(BaseModel):
         return ToolDefinition(
             name=self.name(),
             description="创建或覆盖写入一个文件。如果目录不存在会自动创建",
-            is_readonly=self.readonly(),
+            readonly=self.readonly(),
             input_schema={
                 "type": "object",
                 "properties": {
@@ -45,18 +48,22 @@ class WriteFile(BaseModel):
 
     async def execute(self, arguments: dict[str, Any] | str | None) -> str:
         if not arguments:
+            logger.info("请指定 file_name 和 content")
             raise ValueError("请指定 file_name 和 content")
         if isinstance(arguments, dict):
             try:
                 write_file_params = WriteFileParams.model_validate(arguments)
             except ValidationError as e:
+                logger.info(f"{self.name()} 输入参数格式错误: {e}")
                 raise ValueError(f"{self.name()} 参数格式错误: {e}")
         elif isinstance(arguments, str):
             try:
                 write_file_params = WriteFileParams.model_validate_json(arguments)
             except ValidationError as e:
+                logger.info(f"{self.name()} 输入参数格式错误: {e}")
                 raise ValueError(f"{self.name()} 参数格式错误: {e}")
         else:
+            logger.info("file_name 和 content 格式错误")
             raise ValueError("file_name 和 content 格式错误")
 
         # 路径判断
@@ -66,6 +73,7 @@ class WriteFile(BaseModel):
                 write_file_params.file_name
             )
         except IOError:
+            logger.info(f"文件不存在: {write_file_params.file_name}", exc_info=True)
             raise
 
         target_path = pathlib.Path(absolute_path_file)
@@ -73,6 +81,7 @@ class WriteFile(BaseModel):
         try:
             await aiofiles.os.makedirs(target_path.parent, exist_ok=True)
         except PermissionError as e:
+            logger.warning(f"无权限创建目录: {target_path.parent}", exc_info=True)
             raise PermissionError(f"无权限创建目录: {target_path.parent}") from e
 
         # 写入文件
@@ -80,6 +89,7 @@ class WriteFile(BaseModel):
             async with aiofiles.open(target_path, "w", encoding="utf-8") as f:
                 await f.write(write_file_params.content)
         except PermissionError as e:
+            logger.warning(f"无写入权限: {target_path}", exc_info=True)
             raise PermissionError(f"无写入权限: {target_path}") from e
 
         return "ok"

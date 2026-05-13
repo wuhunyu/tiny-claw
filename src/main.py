@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import pathlib
 
@@ -11,11 +12,22 @@ from src.tools.registry import RegistryImpl
 from src.tools.write_file import WriteFile
 
 
+def setup_logger():
+    logging.basicConfig(
+        level=logging.WARNING,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+    logging.getLogger("src").setLevel(logging.INFO)
+
+
 async def main():
     # 工作区域
     work_dir = os.getenv("WORK_DIR", os.getcwd())
     # 获取绝对路径
     work_dir = str(pathlib.Path(work_dir).expanduser().resolve())
+
+    # 初始化日志
+    setup_logger()
 
     # llm client
     chat_client = MyChat(

@@ -26,7 +26,7 @@ class ToolResult(BaseModel):
 class ToolDefinition(BaseModel):
     name: str = Field(..., description="工具名称")
     description: str = Field(..., description="工具描述")
-    is_readonly: bool = Field(default=False, description="是否只读")
+    readonly: bool = Field(default=False, description="是否只读")
     input_schema: dict[str, Any] = Field(..., description="工具输入参数")
 
 

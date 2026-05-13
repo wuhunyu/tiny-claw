@@ -1,3 +1,4 @@
+import logging
 import os
 import pathlib
 from typing import Any
@@ -7,6 +8,8 @@ from pydantic import BaseModel, Field
 
 from src.schema.message import ToolDefinition
 from src.util.path_util import absolute_path
+
+logger = logging.getLogger(__name__)
 
 MAX_LEN = 8000
 
@@ -28,7 +31,7 @@ class ReadFile(BaseModel):
         return ToolDefinition(
             name=self.name(),
             description="读取指定文件内容",
-            is_readonly=self.readonly(),
+            readonly=self.readonly(),
             input_schema={
                 "type": "object",
                 "properties": {
@@ -43,12 +46,14 @@ class ReadFile(BaseModel):
 
     async def execute(self, arguments: dict[str, Any] | str | None) -> str:
         if not arguments:
+            logger.info("请指定 file_name")
             raise ValueError("请指定 file_name")
         if isinstance(arguments, dict):
             read_file_params = ReadFileParams.model_validate(arguments)
         elif isinstance(arguments, str):
             read_file_params = ReadFileParams.model_validate_json(arguments)
         else:
+            logger.info("file_name 格式错误")
             raise ValueError("file_name 格式错误")
 
         # 路径判断
@@ -58,19 +63,23 @@ class ReadFile(BaseModel):
                 read_file_params.file_name
             )
         except IOError:
+            logger.info(f"文件不存在: {read_file_params.file_name}", exc_info=True)
             raise
 
         target_path = pathlib.Path(absolute_path_file)
         # 是否存在
         if not target_path.exists():
+            logger.info(f"文件不存在: {read_file_params.file_name}")
             raise ValueError(f"文件不存在: {read_file_params.file_name}")
         if not target_path.is_file():
+            logger.info(f"不是文件: {read_file_params.file_name}")
             raise ValueError(f"不是文件: {read_file_params.file_name}")
         # 执行读取任务
         try:
             async with aiofiles.open(target_path, "r") as f:
                 content = await f.read()
         except Exception as e:
+            logger.warning(f"读取文件内容失败: {read_file_params.file_name}", exc_info=True)
             raise ValueError(f"读取文件内容失败: {read_file_params.file_name}", e)
 
         # 超长截取
