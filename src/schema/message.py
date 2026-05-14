@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field
 
@@ -36,3 +36,50 @@ class Message(BaseModel):
     content: str | None = Field(default=None, description="消息内容")
     tool_call_id: str | None = Field(default=None, description="工具调用ID")
     tool_calls: list[ToolCall] | None = Field(default=None, description="工具调用")
+
+
+class OutputSchema(BaseModel):
+    JSON_EXAMPLE: ClassVar[str] = """
+{
+  "is_final_answer": bool,
+  "content": str
+}
+"""
+    PROMPT: ClassVar[str] = f"""
+
+你必须遵守以下输出协议：
+
+1. 当你需要调用工具、函数或外部能力来继续完成任务时：
+   - 使用系统提供的 tool_calls 发起工具调用。
+   - message.content 可以为空。
+   - 不要在 message.content 中描述工具调用。
+   - 不要输出 JSON。
+
+2. 当你不需要继续调用工具时，message.content 必须只输出一个合法 JSON 对象。
+   JSON 必须符合以下格式：
+
+{JSON_EXAMPLE}
+
+字段含义：
+- is_final_answer:
+  - true：表示这是可以直接展示给用户的最终回答。
+  - false：表示当前还不能给出最终回答，通常用于向用户追问必要信息、说明暂时无法继续，或给出中间状态。
+- content:
+  - 当 is_final_answer 为 true 时，content 是最终回答内容。
+  - 当 is_final_answer 为 false 时，content 是需要展示给用户的追问、澄清、错误说明或下一步所需信息。
+
+判断规则：
+- 如果已经充分回答用户问题，并且不需要更多工具调用，设置 is_final_answer=true。
+- 如果缺少完成任务所必需的信息，且无法合理默认，设置 is_final_answer=false，并在 content 中明确询问用户需要补充什么。
+- 如果工具失败、权限不足、信息不可获得，且没有可行的下一步，设置 is_final_answer=false，并在 content 中说明原因。
+- 如果仍然有可用工具可以帮助完成任务，优先调用工具，不要输出该 JSON。
+- 不要把工具调用、函数名、参数放进 content。
+- 不要暴露详细思考过程。
+- 不要输出 Markdown。
+- 不要输出代码块。
+- 不要输出 JSON 之外的任何文本。
+
+    """
+
+    is_final_answer: bool = Field(default=False, description="是否最终输出")
+    content: str = Field(..., description="输出内容")

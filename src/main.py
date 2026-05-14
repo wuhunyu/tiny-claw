@@ -48,7 +48,7 @@ async def main():
         registry=registry,
         prompt_composer=PromptComposer(work_dir=work_dir),
         work_dir=work_dir,
-        enable_thinking=os.getenv("ENABLE_THINKING", True),
+        enable_thinking=os.getenv("ENABLE_THINKING", False),
     )
 
     prompt = """

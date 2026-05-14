@@ -2,9 +2,11 @@ import asyncio
 import logging
 import os
 
+from pydantic import ValidationError
+
 from src.context.composer import PromptComposer
 from src.provider.interface import LLMProvider
-from src.schema.message import Role, Message, ToolCall, ToolResult
+from src.schema.message import Role, Message, ToolCall, ToolResult, OutputSchema
 from src.tools.registry import Registry
 
 logger = logging.getLogger(__name__)
@@ -56,7 +58,8 @@ class AgentEngine:
             if self.enable_thinking:
                 logger.info(f"[Engine][Phase 1] 剥夺工具访问权，强制进入慢思考与规划阶段...")
                 try:
-                    think_resp = await self.provider.generate(context_history, [])
+                    think_resp, _ = self.parse_output(await self.provider.generate(context_history, []))
+                    logger.info(f"[Engine][Phase 1] 思考结果: {think_resp.content}")
                 except Exception as e:
                     logger.exception(f"thinking 阶段生成失败")
                     raise ValueError(f"thinking 阶段生成失败: {e}")
@@ -67,7 +70,9 @@ class AgentEngine:
             available_tools = await self.registry.get_available_tools()
             try:
                 logger.info(f"[Engine][Phase 2] 恢复工具挂载，等待模型采取行动...")
-                action_resp = await self.provider.generate(context_history, available_tools)
+                action_resp, is_final_answer = self.parse_output(
+                    await self.provider.generate(context_history, available_tools)
+                )
             except Exception as e:
                 logger.exception(f"action 阶段生成失败")
                 raise ValueError(f"action 阶段生成失败: {e}")
@@ -76,7 +81,7 @@ class AgentEngine:
             if action_resp.content:
                 logger.info(f"🤖 [对外回复]: {action_resp.content}")
 
-            if not action_resp.tool_calls:
+            if is_final_answer:
                 logger.info("[Engine] 模型未请求调用工具，任务宣告完成。")
                 break
 
@@ -128,3 +133,18 @@ class AgentEngine:
                     logger.info(f"-> 🛠️ 串行执行工具: {tool_call.name}, 参数: {tool_call.arguments}")
                     tool_result = await self.registry.execute(tool_call)
                     context_history.append(handle_tool_result(tool_call, tool_result))
+
+    def parse_output(self, message: Message) -> tuple[Message, bool]:
+        message_content = message.content
+        if not message_content:
+            return message, False
+        try:
+            output = OutputSchema.model_validate_json(message_content)
+        except ValidationError as e:
+            logger.warning("输出结果不符合格式", exc_info=True)
+            raise ValueError(f"""
+输出结果不符合格式:
+{OutputSchema.JSON_EXAMPLE}
+""")
+        message.content = output.content
+        return message, output.is_final_answer
