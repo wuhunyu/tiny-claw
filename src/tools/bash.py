@@ -39,7 +39,7 @@ class Bash(BaseModel):
                         "type": "array",
                         "items": {
                             "type": "string",
-                            "description": "bash 结构化命令"
+                            "description": "bash 结构化命令(不需要自带 bash -lc 指定环境)"
                         }
                     }
                 },
@@ -72,7 +72,7 @@ class Bash(BaseModel):
         # 创建子进程执行
         try:
             process = await asyncio.create_subprocess_exec(
-                "bash", "-c", *bash_params.command,
+                "bash", "-lc", *bash_params.command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 # 指定运行目录为工作空间
@@ -90,14 +90,14 @@ class Bash(BaseModel):
                 timeout=self.timeout
             )
         except asyncio.TimeoutError:
+            logger.warning(f"执行超时({self.timeout}s): {bash_params.command}", exc_info=True)
             self._kill_process_group(process)
             await process.wait()
-            logger.warning(f"执行超时({self.timeout}s): {bash_params.command}", exc_info=True)
             return f"执行超时({self.timeout}s): {bash_params.command}"
         except Exception as e:
+            logger.warning(f"执行失败: {bash_params.command}", exc_info=True)
             self._kill_process_group(process)
             await process.wait()
-            logger.warning(f"执行失败: {bash_params.command}", exc_info=True)
             return f"执行失败: {bash_params.command}\n{e}"
 
         stdout = stdout_bytes.decode('utf-8', errors='replace')

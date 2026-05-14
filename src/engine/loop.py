@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 
+from src.context.composer import PromptComposer
 from src.provider.interface import LLMProvider
 from src.schema.message import Role, Message, ToolCall, ToolResult
 from src.tools.registry import Registry
@@ -12,6 +13,7 @@ logger = logging.getLogger(__name__)
 class AgentEngine:
     provider: LLMProvider
     registry: Registry
+    prompt_composer: PromptComposer
     work_dir: str
     enable_thinking: bool
 
@@ -19,11 +21,13 @@ class AgentEngine:
             self,
             provider: LLMProvider,
             registry: Registry,
+            prompt_composer: PromptComposer,
             work_dir: str = os.getenv("WORK_DIR", os.getcwd()),
             enable_thinking: bool = False,
     ):
         self.provider = provider
         self.registry = registry
+        self.prompt_composer = prompt_composer
         self.work_dir = work_dir
         self.enable_thinking = enable_thinking
 
@@ -31,11 +35,13 @@ class AgentEngine:
         logger.info(f"[Engine] 引擎启动，锁定工作区: {self.work_dir}")
         logger.info(f"[Engine] 慢思考模式 (Thinking Phase): {self.enable_thinking}")
 
+        # 加载系统提示词
+        system_prompt = await self.prompt_composer.build()
+        logger.info(f"[Engine] 加载系统提示词: {system_prompt}")
+
         context_history = [
-            Message(
-                role=Role.ROLE_SYSTEM,
-                content="You are tiny-claw, an expert coding assistant. You have full access to tools in the workspace."
-            ),
+            # 加载系统提示词
+            system_prompt,
             Message(
                 role=Role.ROLE_USER,
                 content=user_prompt

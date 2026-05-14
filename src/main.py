@@ -3,6 +3,7 @@ import logging
 import os
 import pathlib
 
+from src.context.composer import PromptComposer
 from src.engine.loop import AgentEngine
 from src.provider.chat import MyChat, Provider
 from src.tools.bash import Bash
@@ -45,13 +46,14 @@ async def main():
     engine = AgentEngine(
         provider=chat_client,
         registry=registry,
+        prompt_composer=PromptComposer(work_dir=work_dir),
         work_dir=work_dir,
         enable_thinking=os.getenv("ENABLE_THINKING", True),
     )
 
     prompt = """
-    我当前目录下有 a.txt, b.txt, c.txt 三个文件。 
-    为了节省时间，请你同时一次性读取这三个文件，并将它们的内容综合起来，告诉我它们分别记录了什么领域的信息。
+我需要在当前目录下新建一个 ping.go，提供一个简单的 http ping 接口。
+写完之后，帮我把代码用 git 提交一下。
     """
     await engine.run(prompt)
 
