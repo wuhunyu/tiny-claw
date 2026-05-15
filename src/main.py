@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+from src.config.config import settings
 from src.dingtalk.bot import create_ding_talk_bot
 
 
@@ -15,6 +16,9 @@ def setup_logger():
 async def main():
     # 初始化日志
     setup_logger()
+
+    # 导入配置
+    _ = settings
 
     # 引入 钉钉
     ding_talk_bot = await create_ding_talk_bot()

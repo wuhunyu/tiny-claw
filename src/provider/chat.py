@@ -1,25 +1,19 @@
 import logging
-import os
-from enum import Enum
-
 from litellm import acompletion
 from pydantic import BaseModel, Field
 
+from src.config.config import settings
+from src.provider.interface import Provider
 from src.schema.message import Message, ToolDefinition, Role, ToolCall
 
 logger = logging.getLogger(__name__)
 
 
-class Provider(str, Enum):
-    OPENAI = "openai"
-    ANTHROPIC = "anthropic"
-
-
 class MyChat(BaseModel):
     llm_provider: Provider = Field(default=Provider.OPENAI, description="模型供应商")
-    base_url: str = Field(default_factory=lambda: os.getenv("LLM_BASE_URL", ""), description="模型供应商的 API 地址")
-    api_key: str = Field(default_factory=lambda: os.getenv("LLM_API_KEY", ""), description="模型供应商的 API Key")
-    model: str = Field(default_factory=lambda: os.getenv("LLM_MODEL", "GLM-4.7-Flash"), description="模型名称")
+    base_url: str = Field(default_factory=lambda: settings.llm_base_url, description="模型供应商的 API 地址")
+    api_key: str = Field(default_factory=lambda: settings.llm_api_key, description="模型供应商的 API Key")
+    model: str = Field(default_factory=lambda: settings.llm_model or "gpt-5.3-codex", description="模型名称")
 
     async def generate(self, messages: list[Message], available_tools: list[ToolDefinition]) -> Message:
         # 消息转换

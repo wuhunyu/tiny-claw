@@ -1,11 +1,11 @@
 import logging
-import os
 import pathlib
 from typing import Any
 
 import aiofiles
 from pydantic import BaseModel, Field
 
+from src.config.config import settings
 from src.schema.message import ToolDefinition
 from src.util.path_util import absolute_path
 
@@ -19,7 +19,7 @@ class ReadFileParams(BaseModel):
 
 
 class ReadFile(BaseModel):
-    work_dir: str = Field(default=os.getcwd(), description="工作区")
+    work_dir: str = Field(default=settings.work_dir, description="工作区")
 
     def name(self) -> str:
         return "read_file"

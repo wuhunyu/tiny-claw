@@ -1,9 +1,9 @@
 import asyncio
 import logging
-import os
 
 from pydantic import ValidationError
 
+from src.config.config import settings
 from src.context.composer import PromptComposer
 from src.engine.reporter import Reporter
 from src.provider.interface import LLMProvider
@@ -27,7 +27,7 @@ class AgentEngine:
             registry: Registry,
             prompt_composer: PromptComposer,
             reporter: Reporter,
-            work_dir: str = os.getenv("WORK_DIR", os.getcwd()),
+            work_dir: str = settings.work_dir,
             enable_thinking: bool = False,
     ):
         self.provider = provider

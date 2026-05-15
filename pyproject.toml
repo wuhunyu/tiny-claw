@@ -9,5 +9,6 @@ dependencies = [
     "dingtalk-stream>=0.24.3",
     "litellm>=1.83.0",
     "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.1",
     "python-frontmatter>=1.1.0",
 ]
