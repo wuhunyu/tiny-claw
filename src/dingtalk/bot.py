@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 import dingtalk_stream
 from dingtalk_stream import CallbackMessage, AckMessage, DingTalkStreamClient, Credential
@@ -6,6 +7,7 @@ from dingtalk_stream import CallbackMessage, AckMessage, DingTalkStreamClient, C
 from src.config.config import settings
 from src.context.composer import PromptComposer
 from src.engine.loop import AgentEngine
+from src.engine.session import SessionManager
 from src.provider.chat import MyChat
 from src.provider.interface import LLMProvider
 from src.schema.message import Message, ToolCall, ToolResult
@@ -24,6 +26,7 @@ class DingTalkBotHandler(dingtalk_stream.ChatbotHandler):
     registry: Registry
     prompt_composer: PromptComposer
     enable_thinking: bool
+    session_manager: SessionManager
 
     def __init__(
             self,
@@ -32,6 +35,7 @@ class DingTalkBotHandler(dingtalk_stream.ChatbotHandler):
             registry: Registry,
             prompt_composer: PromptComposer,
             enable_thinking: bool,
+            session_manager: SessionManager,
     ):
         super().__init__()
         self.work_dir = work_dir
@@ -39,13 +43,12 @@ class DingTalkBotHandler(dingtalk_stream.ChatbotHandler):
         self.registry = registry
         self.prompt_composer = prompt_composer
         self.enable_thinking = enable_thinking
+        self.session_manager = session_manager
 
     async def process(self, callback: CallbackMessage):
         incoming_message = dingtalk_stream.ChatbotMessage.from_dict(callback.data)
 
         """
-        # 群聊/私聊 id
-        conversation_id = incoming_message.conversation_id
         # 群聊/私聊 类型: '1' 单聊，'2' 群聊
         conversation_type = incoming_message.conversation_type
         # 群聊/私聊 标题
@@ -58,6 +61,8 @@ class DingTalkBotHandler(dingtalk_stream.ChatbotHandler):
         sender_nick = incoming_message.sender_nick
         """
 
+        # 群聊/私聊 id
+        conversation_id = incoming_message.conversation_id
         # 消息内容
         content_strip = incoming_message.text.content.strip()
 
@@ -75,7 +80,13 @@ class DingTalkBotHandler(dingtalk_stream.ChatbotHandler):
             enable_thinking=self.enable_thinking,
         )
         try:
-            await agent_engine.run(content_strip)
+            await agent_engine.run(
+                content_strip,
+                await self.session_manager.get_or_create(
+                    session_id=conversation_id or str(uuid.uuid4),
+                    work_dir=self.work_dir,
+                ),
+            )
         except Exception:
             logger.exception("loop 运行失败")
             return AckMessage.STATUS_SYSTEM_EXCEPTION, 'error'
@@ -176,6 +187,7 @@ async def create_ding_talk_bot() -> DingTalkBot:
             registry=registry,
             prompt_composer=prompt_composer,
             enable_thinking=settings.enable_thinking or False,
+            session_manager=SessionManager(),
         )
     )
 

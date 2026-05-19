@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from src.config.config import settings
 from src.context.composer import PromptComposer
 from src.engine.reporter import Reporter
+from src.engine.session import Session
 from src.provider.interface import LLMProvider
 from src.schema.message import Role, Message, ToolCall, ToolResult, OutputSchema
 from src.tools.registry import Registry
@@ -37,7 +38,7 @@ class AgentEngine:
         self.work_dir = work_dir
         self.enable_thinking = enable_thinking
 
-    async def run(self, user_prompt: str):
+    async def run(self, user_prompt: str, session: Session):
         logger.info(f"[Engine] 引擎启动，锁定工作区: {self.work_dir}")
         logger.info(f"[Engine] 慢思考模式 (Thinking Phase): {self.enable_thinking}")
 
@@ -45,7 +46,7 @@ class AgentEngine:
         system_prompt = await self.prompt_composer.build()
         logger.info(f"[Engine] 加载系统提示词: {system_prompt}")
 
-        context_history = [
+        initial_messages = [
             # 加载系统提示词
             system_prompt,
             Message(
@@ -53,6 +54,7 @@ class AgentEngine:
                 content=user_prompt
             )
         ]
+        await session.append(initial_messages)
 
         self.reporter.session_start()
         turnCount = 0
@@ -64,6 +66,7 @@ class AgentEngine:
             if self.enable_thinking:
                 logger.info(f"[Engine][Phase 1] 剥夺工具访问权，强制进入慢思考与规划阶段...")
                 try:
+                    context_history = await self.compact_session(session, initial_messages)
                     think_resp, _ = self.parse_output(await self.provider.generate(context_history, []))
                     logger.info(f"[Engine][Phase 1] 思考结果: {think_resp.content}")
                     self.reporter.on_thinking(think_resp)
@@ -72,11 +75,12 @@ class AgentEngine:
                     raise ValueError(f"thinking 阶段生成失败: {e}")
 
                 if think_resp.content:
-                    context_history.append(think_resp)
+                    await session.append([think_resp])
 
             available_tools = await self.registry.get_available_tools()
             try:
                 logger.info(f"[Engine][Phase 2] 恢复工具挂载，等待模型采取行动...")
+                context_history = await self.compact_session(session, initial_messages)
                 action_resp, is_final_answer = self.parse_output(
                     await self.provider.generate(context_history, available_tools)
                 )
@@ -84,13 +88,14 @@ class AgentEngine:
                 logger.exception(f"action 阶段生成失败")
                 raise ValueError(f"action 阶段生成失败: {e}")
 
-            context_history.append(action_resp)
+            await session.append(action_resp)
             if action_resp.content:
                 logger.info(f"🤖 [对外回复]: {action_resp.content}")
                 self.reporter.on_message(action_resp)
 
             if is_final_answer:
                 logger.info("[Engine] 模型未请求调用工具，任务宣告完成。")
+                await session.append(action_resp)
                 self.reporter.step_end(turnCount)
                 self.reporter.session_end()
                 break
@@ -133,13 +138,13 @@ class AgentEngine:
                 tool_results = await asyncio.gather(*tasks, return_exceptions=True)
                 for tool_call, tool_result in zip(action_resp.tool_calls, tool_results):
                     if isinstance(tool_result, Exception):
-                        context_history.append(Message(
+                        await session.append(Message(
                             role=Role.ROLE_TOOL,
                             tool_call_id=tool_call.id,
                             content=f"工具 {tool_call.name} 执行失败: {tool_result!r}",
                         ))
                     else:
-                        context_history.append(handle_tool_result(tool_call, tool_result))
+                        await session.append(handle_tool_result(tool_call, tool_result))
             else:
                 # 串行执行
                 for tool_call in action_resp.tool_calls:
@@ -147,9 +152,12 @@ class AgentEngine:
                     self.reporter.pre_tool_call(tool_call)
                     tool_result = await self.registry.execute(tool_call)
                     self.reporter.post_tool_call(tool_result)
-                    context_history.append(handle_tool_result(tool_call, tool_result))
+                    await session.append(handle_tool_result(tool_call, tool_result))
 
             self.reporter.step_end(turnCount)
+
+    async def compact_session(self, session: Session, initial_messages: list[Message]) -> list[Message]:
+        return initial_messages + await session.get_working_memory(settings.max_session_window_size)
 
     def parse_output(self, message: Message) -> tuple[Message, bool]:
         message_content = message.content

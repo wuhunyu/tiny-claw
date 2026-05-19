@@ -33,6 +33,8 @@ class AppSettings(BaseSettings):
 
     bash_timeout: int = Field(default=30, alias="BASH_TIMEOUT", description="Bash 命令执行超时时间", ge=1)
 
+    max_session_window_size: int = Field(default=10, alias="MAX_SESSION_WINDOW_SIZE", description="会话窗口大小", ge=1)
+
     @field_validator("work_dir")
     @classmethod
     def normalize_work_dir(cls, value: str) -> str:
