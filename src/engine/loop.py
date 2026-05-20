@@ -4,7 +4,6 @@ import logging
 from pydantic import ValidationError
 
 from src.config.config import settings
-from src.context.composer import PromptComposer
 from src.engine.reporter import Reporter
 from src.engine.session import Session
 from src.provider.interface import LLMProvider
@@ -17,7 +16,6 @@ logger = logging.getLogger(__name__)
 class AgentEngine:
     provider: LLMProvider
     registry: Registry
-    prompt_composer: PromptComposer
     reporter: Reporter
     work_dir: str
     enable_thinking: bool
@@ -26,35 +24,39 @@ class AgentEngine:
             self,
             provider: LLMProvider,
             registry: Registry,
-            prompt_composer: PromptComposer,
             reporter: Reporter,
             work_dir: str = settings.work_dir,
             enable_thinking: bool = False,
     ):
         self.provider = provider
         self.registry = registry
-        self.prompt_composer = prompt_composer
         self.reporter = reporter
         self.work_dir = work_dir
         self.enable_thinking = enable_thinking
 
-    async def run(self, user_prompt: str, session: Session):
+    async def run(
+            self,
+            user_prompt: str,
+            system_prompt: Message,
+            session: Session,
+    ):
         logger.info(f"[Engine] 引擎启动，锁定工作区: {self.work_dir}")
         logger.info(f"[Engine] 慢思考模式 (Thinking Phase): {self.enable_thinking}")
-
-        # 加载系统提示词
-        system_prompt = await self.prompt_composer.build()
-        logger.info(f"[Engine] 加载系统提示词: {system_prompt}")
 
         initial_messages = [
             # 加载系统提示词
             system_prompt,
-            Message(
-                role=Role.ROLE_USER,
-                content=user_prompt
-            )
         ]
-        await session.append(initial_messages)
+        user_prompt = Message(
+            role=Role.ROLE_USER,
+            content=user_prompt
+        )
+        if await session.is_inited():
+            # 加载系统提示词
+            logger.info(f"[Engine] 加载系统提示词: {system_prompt}")
+            await session.append(initial_messages + [user_prompt])
+        else:
+            await session.append(user_prompt)
 
         self.reporter.session_start()
         turnCount = 0

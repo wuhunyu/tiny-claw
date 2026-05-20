@@ -59,6 +59,13 @@ class Session:
         finally:
             await self._lock.release_read()
 
+    async def is_inited(self) -> bool:
+        await self._lock.acquire_read()
+        try:
+            return len(self._history) > 0
+        finally:
+            await self._lock.release_read()
+
 
 class SessionManager:
     _sessions: dict[str, Session]

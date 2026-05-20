@@ -1,5 +1,7 @@
+import asyncio
 import logging
 import uuid
+from collections import defaultdict
 
 import dingtalk_stream
 from dingtalk_stream import CallbackMessage, AckMessage, DingTalkStreamClient, Credential
@@ -27,6 +29,7 @@ class DingTalkBotHandler(dingtalk_stream.ChatbotHandler):
     prompt_composer: PromptComposer
     enable_thinking: bool
     session_manager: SessionManager
+    _locks: dict[str, asyncio.Lock]
 
     def __init__(
             self,
@@ -44,6 +47,7 @@ class DingTalkBotHandler(dingtalk_stream.ChatbotHandler):
         self.prompt_composer = prompt_composer
         self.enable_thinking = enable_thinking
         self.session_manager = session_manager
+        self._locks = defaultdict(asyncio.Lock)
 
     async def process(self, callback: CallbackMessage):
         incoming_message = dingtalk_stream.ChatbotMessage.from_dict(callback.data)
@@ -71,7 +75,6 @@ class DingTalkBotHandler(dingtalk_stream.ChatbotHandler):
         agent_engine = AgentEngine(
             provider=self.chat_client,
             registry=self.registry,
-            prompt_composer=self.prompt_composer,
             reporter=DingTalkBotReporter(
                 handler=self,
                 incoming_message=incoming_message,
@@ -80,13 +83,24 @@ class DingTalkBotHandler(dingtalk_stream.ChatbotHandler):
             enable_thinking=self.enable_thinking,
         )
         try:
-            await agent_engine.run(
-                content_strip,
-                await self.session_manager.get_or_create(
-                    session_id=conversation_id or str(uuid.uuid4),
+            # 加载系统提示词
+            system_prompt = await self.prompt_composer.build()
+            # 会话id
+            session_id = conversation_id or str(uuid.uuid4)
+            # 获取 会话锁
+            async with self._locks[session_id]:
+                # 获取 session 对象
+                session = await self.session_manager.get_or_create(
+                    session_id=session_id,
                     work_dir=self.work_dir,
-                ),
-            )
+                )
+
+                # 运行 loop
+                await agent_engine.run(
+                    user_prompt=content_strip,
+                    system_prompt=system_prompt,
+                    session=session,
+                )
         except Exception:
             logger.exception("loop 运行失败")
             return AckMessage.STATUS_SYSTEM_EXCEPTION, 'error'
