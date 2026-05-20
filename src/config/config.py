@@ -35,6 +35,8 @@ class AppSettings(BaseSettings):
 
     max_session_window_size: int = Field(default=10, alias="MAX_SESSION_WINDOW_SIZE", description="会话窗口大小", ge=1)
 
+    tavily_api_key: str = Field(..., alias="TAVILY_API_KEY", description="Tavily API Key", min_length=1)
+
     @field_validator("work_dir")
     @classmethod
     def normalize_work_dir(cls, value: str) -> str:

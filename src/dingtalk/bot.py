@@ -17,6 +17,7 @@ from src.tools.bash import Bash
 from src.tools.edit_file import EditFile
 from src.tools.read_file import ReadFile
 from src.tools.registry import RegistryImpl, Registry
+from src.tools.web_search_by_tavily import WebSearchByTavily
 from src.tools.write_file import WriteFile
 
 logger = logging.getLogger(__name__)
@@ -182,6 +183,7 @@ async def create_ding_talk_bot() -> DingTalkBot:
         ),
     )
     await registry.registry(tool=EditFile(work_dir=work_dir))
+    await registry.registry(tool=WebSearchByTavily())
 
     # 提示词组合器
     prompt_composer = PromptComposer(work_dir=work_dir)

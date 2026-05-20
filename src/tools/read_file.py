@@ -53,8 +53,8 @@ class ReadFile(BaseModel):
         elif isinstance(arguments, str):
             read_file_params = ReadFileParams.model_validate_json(arguments)
         else:
-            logger.info("file_name 格式错误")
-            raise ValueError("file_name 格式错误")
+            logger.info(f"{self.name()} 格式错误")
+            raise ValueError(f"{self.name()} 格式错误")
 
         # 路径判断
         try:

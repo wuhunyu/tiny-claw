@@ -63,8 +63,8 @@ class WriteFile(BaseModel):
                 logger.info(f"{self.name()} 输入参数格式错误: {e}")
                 raise ValueError(f"{self.name()} 参数格式错误: {e}")
         else:
-            logger.info("file_name 和 content 格式错误")
-            raise ValueError("file_name 和 content 格式错误")
+            logger.info(f"{self.name()} 格式错误")
+            raise ValueError(f"{self.name()} 格式错误")
 
         # 路径判断
         try:
