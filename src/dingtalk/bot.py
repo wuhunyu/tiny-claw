@@ -107,16 +107,16 @@ class DingTalkBotReporter:
         self.handler.reply_text(text, self.incoming_message)
 
     def session_start(self) -> None:
-        self.reply("开始执行任务...")
+        pass
 
     def session_end(self) -> None:
-        self.reply("任务结束...")
+        pass
 
     def step_start(self, step_count: int) -> None:
-        self.reply(f"========== [Turn {step_count}] 开始 ==========")
+        pass
 
     def step_end(self, step_count: int) -> None:
-        self.reply(f"========== [Turn {step_count}] 结束 ==========")
+        pass
 
     def on_thinking(self, message: Message) -> None:
         self.reply(f"思考结果: {message.content}")
@@ -128,7 +128,7 @@ class DingTalkBotReporter:
         pass
 
     def on_message(self, message: Message) -> None:
-        self.reply(f"🤖 [对外回复]: {message.content}")
+        self.reply(f"{message.content}")
 
 
 class DingTalkBot:
