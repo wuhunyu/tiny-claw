@@ -86,6 +86,9 @@ class DingTalkBotHandler(dingtalk_stream.ChatbotHandler):
             enable_thinking=self.enable_thinking,
         )
         try:
+            plan_model = self.prompt_composer.plan_model or False
+            logger.info(f"计划模式 (Plan Mode): {plan_model}")
+
             # 加载系统提示词
             system_prompt = await self.prompt_composer.build()
             # 会话id
@@ -188,7 +191,7 @@ async def create_ding_talk_bot() -> DingTalkBot:
     await registry.registry(tool=WebSearchByTavily())
 
     # 提示词组合器
-    prompt_composer = PromptComposer(work_dir=work_dir)
+    prompt_composer = PromptComposer(work_dir=work_dir, plan_model=False)
 
     # 钉钉客户端
     dingtalk_stream_client = DingTalkStreamClient(
