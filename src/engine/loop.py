@@ -4,6 +4,7 @@ import logging
 from pydantic import ValidationError
 
 from src.config.config import settings
+from src.context.compactor import Compactor
 from src.engine.reporter import Reporter
 from src.engine.session import Session
 from src.provider.interface import LLMProvider
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 class AgentEngine:
     provider: LLMProvider
+    compactor: Compactor
     registry: Registry
     reporter: Reporter
     work_dir: str
@@ -23,12 +25,14 @@ class AgentEngine:
     def __init__(
             self,
             provider: LLMProvider,
+            compactor: Compactor,
             registry: Registry,
             reporter: Reporter,
             work_dir: str = settings.work_dir,
             enable_thinking: bool = False,
     ):
         self.provider = provider
+        self.compactor = compactor
         self.registry = registry
         self.reporter = reporter
         self.work_dir = work_dir
@@ -68,8 +72,9 @@ class AgentEngine:
             if self.enable_thinking:
                 logger.info(f"[Engine][Phase 1] 剥夺工具访问权，强制进入慢思考与规划阶段...")
                 try:
-                    context_history = await self.compact_session(session, initial_messages)
-                    think_resp, _ = self.parse_output(await self.provider.generate(context_history, []))
+                    context_history = await self.compact(session, initial_messages)
+                    think_origin_resp, _ = await self.provider.generate(context_history, [])
+                    think_resp, _ = self.parse_output(think_origin_resp)
                     logger.info(f"[Engine][Phase 1] 思考结果: {think_resp.content}")
                     self.reporter.on_thinking(think_resp)
                 except Exception as e:
@@ -82,10 +87,9 @@ class AgentEngine:
             available_tools = await self.registry.get_available_tools()
             try:
                 logger.info(f"[Engine][Phase 2] 恢复工具挂载，等待模型采取行动...")
-                context_history = await self.compact_session(session, initial_messages)
-                action_resp, is_final_answer = self.parse_output(
-                    await self.provider.generate(context_history, available_tools)
-                )
+                context_history = await self.compact(session, initial_messages)
+                action_origin_resp, _ = await self.provider.generate(context_history, available_tools)
+                action_resp, is_final_answer = self.parse_output(action_origin_resp)
             except Exception as e:
                 logger.exception(f"action 阶段生成失败")
                 raise ValueError(f"action 阶段生成失败: {e}")
@@ -158,8 +162,10 @@ class AgentEngine:
 
             self.reporter.step_end(turnCount)
 
-    async def compact_session(self, session: Session, initial_messages: list[Message]) -> list[Message]:
-        return initial_messages + await session.get_working_memory(settings.max_session_window_size)
+    async def compact(self, session: Session, initial_messages: list[Message]) -> list[Message]:
+        return self.compactor.compact(
+            initial_messages + await session.get_working_memory(settings.max_session_window_size)
+        )
 
     def parse_output(self, message: Message) -> tuple[Message, bool]:
         message_content = message.content

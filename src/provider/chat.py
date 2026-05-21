@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 from src.config.config import settings
 from src.provider.interface import Provider
-from src.schema.message import Message, ToolDefinition, Role, ToolCall
+from src.schema.message import Message, ToolDefinition, Role, ToolCall, TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,11 @@ class MyChat(BaseModel):
     api_key: str = Field(default_factory=lambda: settings.llm_api_key, description="模型供应商的 API Key")
     model: str = Field(default_factory=lambda: settings.llm_model or "gpt-5.3-codex", description="模型名称")
 
-    async def generate(self, messages: list[Message], available_tools: list[ToolDefinition]) -> Message:
+    async def generate(
+            self,
+            messages: list[Message],
+            available_tools: list[ToolDefinition],
+    ) -> tuple[Message, TokenUsage]:
         # 消息转换
         openai_messages = []
         for message in messages:
@@ -99,9 +103,16 @@ class MyChat(BaseModel):
                     name=tool_call.function.name,
                     arguments=tool_call.function.arguments
                 ))
-        return Message(
-            role=Role.ROLE_ASSISTANT,
-            reasoning_content=getattr(res_message, "reasoning_content", None),
-            content=res_message.content,
-            tool_calls=res_tool_calls
+        return (
+            Message(
+                role=Role.ROLE_ASSISTANT,
+                reasoning_content=getattr(res_message, "reasoning_content", None),
+                content=res_message.content,
+                tool_calls=res_tool_calls
+            ),
+            TokenUsage(
+                completion_tokens=openai_res.usage.completion_tokens,
+                prompt_tokens=openai_res.usage.prompt_tokens,
+                total_tokens=openai_res.usage.total_tokens,
+            )
         )

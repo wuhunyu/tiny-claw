@@ -7,6 +7,7 @@ import dingtalk_stream
 from dingtalk_stream import CallbackMessage, AckMessage, DingTalkStreamClient, Credential
 
 from src.config.config import settings
+from src.context.compactor import Compactor
 from src.context.composer import PromptComposer
 from src.engine.loop import AgentEngine
 from src.engine.session import SessionManager
@@ -75,6 +76,7 @@ class DingTalkBotHandler(dingtalk_stream.ChatbotHandler):
         # 实例化一个 engine
         agent_engine = AgentEngine(
             provider=self.chat_client,
+            compactor=Compactor(),
             registry=self.registry,
             reporter=DingTalkBotReporter(
                 handler=self,

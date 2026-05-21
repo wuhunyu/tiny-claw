@@ -37,6 +37,22 @@ class AppSettings(BaseSettings):
 
     tavily_api_key: str = Field(..., alias="TAVILY_API_KEY", description="Tavily API Key", min_length=1)
 
+    model_context_window_tokens: int = Field(
+        default=131072,
+        alias="MODEL_CONTEXT_WINDOW_TOKENS",
+        description="模型上下文窗口最大 token 数",
+    )
+    compact_watermark_ratio: float = Field(
+        default=0.8,
+        alias="COMPACT_WATERMARK_RATIO",
+        description="上下文压缩阈值",
+    )
+    working_memory_msgs: int = Field(
+        default=10,
+        alias="WORKING_MEMORY_MSGS",
+        description="短期记忆留存的消息数",
+    )
+
     @field_validator("work_dir")
     @classmethod
     def normalize_work_dir(cls, value: str) -> str:

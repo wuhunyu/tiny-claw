@@ -84,3 +84,9 @@ class OutputSchema(BaseModel):
 
     is_final_answer: bool = Field(default=False, description="是否最终输出")
     content: str = Field(..., description="输出内容")
+
+
+class TokenUsage(BaseModel):
+    completion_tokens: int = Field(default=0, description="完成 tokens")
+    prompt_tokens: int = Field(default=0, description="提示 tokens")
+    total_tokens: int = Field(default=0, description="总 tokens")

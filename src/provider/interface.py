@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Protocol
 
-from src.schema.message import Message, ToolDefinition
+from src.schema.message import Message, ToolDefinition, TokenUsage
 
 
 class Provider(str, Enum):
@@ -10,5 +10,12 @@ class Provider(str, Enum):
 
 
 class LLMProvider(Protocol):
-    async def generate(self, messages: list[Message], available_tools: list[ToolDefinition]) -> Message:
+    async def generate(
+            self,
+            messages: list[Message],
+            available_tools: list[ToolDefinition],
+    ) -> tuple[
+        Message,
+        TokenUsage,
+    ]:
         ...

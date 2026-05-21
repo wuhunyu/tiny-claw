@@ -1268,6 +1268,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "python-frontmatter" },
     { name = "tavily-python" },
+    { name = "tiktoken" },
 ]
 
 [package.metadata]
@@ -1279,6 +1280,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.14.1" },
     { name = "python-frontmatter", specifier = ">=1.1.0" },
     { name = "tavily-python", specifier = ">=0.7.24" },
+    { name = "tiktoken", specifier = ">=0.12.0" },
 ]
 
 [[package]]
