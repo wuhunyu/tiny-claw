@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from tavily import AsyncTavilyClient
 
 from src.config.config import settings
+from src.excetion.exceptions import InvalidParamException
 from src.schema.message import ToolDefinition
 
 logger = logging.getLogger(__name__)
@@ -68,14 +69,14 @@ class WebSearchByTavily:
     async def execute(self, arguments: dict[str, Any] | str | None) -> str:
         if not arguments:
             logger.info("请指定 query")
-            raise ValueError("请指定 query")
+            raise InvalidParamException(message="请指定 query")
         if isinstance(arguments, dict):
             web_search_params = WebSearchParams.model_validate(arguments)
         elif isinstance(arguments, str):
             web_search_params = WebSearchParams.model_validate_json(arguments)
         else:
             logger.info(f"{self.name()} 格式错误")
-            raise ValueError(f"{self.name()} 格式错误")
+            raise InvalidParamException(message=f"{self.name()} 格式错误")
 
         resp = await self.tavily_client.search(
             query=web_search_params.query,

@@ -29,6 +29,28 @@ class AppSettings(BaseSettings):
     )
     llm_api_key: str = Field(..., alias="LLM_API_KEY", description="LLM API Key", min_length=1)
 
+    recovery_llm_provider: Provider = Field(
+        default_factory=lambda data: data["llm_provider"],
+        alias="RECOVERY_LLM_PROVIDER",
+        description="Recovery LLM 提供商",
+    )
+    recovery_llm_model: str = Field(
+        default_factory=lambda data: data["llm_model"],
+        alias="RECOVERY_LLM_MODEL",
+        description="Recovery LLM 模型",
+    )
+    recovery_llm_base_url: str = Field(
+        default_factory=lambda data: data["llm_base_url"],
+        alias="RECOVERY_LLM_BASE_URL",
+        description="Recovery LLM BASE URL",
+    )
+    recovery_llm_api_key: str = Field(
+        default_factory=lambda data: data["llm_api_key"],
+        alias="RECOVERY_LLM_API_KEY",
+        description="Recovery LLM API Key",
+        min_length=1,
+    )
+
     enable_thinking: bool = Field(default=False, alias="ENABLE_THINKING", description="是否启用思考模式")
 
     bash_timeout: int = Field(default=30, alias="BASH_TIMEOUT", description="Bash 命令执行超时时间", ge=1)

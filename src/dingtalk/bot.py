@@ -9,6 +9,7 @@ from dingtalk_stream import CallbackMessage, AckMessage, DingTalkStreamClient, C
 from src.config.config import settings
 from src.context.compactor import Compactor
 from src.context.composer import PromptComposer
+from src.context.recovery import ToolRecoveryManager
 from src.engine.loop import AgentEngine
 from src.engine.session import SessionManager
 from src.provider.chat import MyChat
@@ -28,6 +29,7 @@ class DingTalkBotHandler(dingtalk_stream.ChatbotHandler):
     work_dir: str
     chat_client: LLMProvider
     registry: Registry
+    tool_recovery_manager: ToolRecoveryManager
     prompt_composer: PromptComposer
     enable_thinking: bool
     session_manager: SessionManager
@@ -38,6 +40,7 @@ class DingTalkBotHandler(dingtalk_stream.ChatbotHandler):
             work_dir: str,
             chat_client: LLMProvider,
             registry: Registry,
+            tool_recovery_manager: ToolRecoveryManager,
             prompt_composer: PromptComposer,
             enable_thinking: bool,
             session_manager: SessionManager,
@@ -46,6 +49,7 @@ class DingTalkBotHandler(dingtalk_stream.ChatbotHandler):
         self.work_dir = work_dir
         self.chat_client = chat_client
         self.registry = registry
+        self.tool_recovery_manager = tool_recovery_manager
         self.prompt_composer = prompt_composer
         self.enable_thinking = enable_thinking
         self.session_manager = session_manager
@@ -82,6 +86,7 @@ class DingTalkBotHandler(dingtalk_stream.ChatbotHandler):
                 handler=self,
                 incoming_message=incoming_message,
             ),
+            tool_recovery_manager=ToolRecoveryManager(tool_registry=self.registry),
             work_dir=self.work_dir,
             enable_thinking=self.enable_thinking,
         )
@@ -190,6 +195,9 @@ async def create_ding_talk_bot() -> DingTalkBot:
     await registry.registry(tool=EditFile(work_dir=work_dir))
     await registry.registry(tool=WebSearchByTavily())
 
+    # 工具恢复管理器
+    tool_recovery_manager = ToolRecoveryManager(tool_registry=registry)
+
     # 提示词组合器
     prompt_composer = PromptComposer(work_dir=work_dir, plan_model=False)
 
@@ -206,6 +214,7 @@ async def create_ding_talk_bot() -> DingTalkBot:
             work_dir=work_dir,
             chat_client=chat_client,
             registry=registry,
+            tool_recovery_manager=tool_recovery_manager,
             prompt_composer=prompt_composer,
             enable_thinking=settings.enable_thinking or False,
             session_manager=SessionManager(),

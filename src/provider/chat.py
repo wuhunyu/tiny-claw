@@ -3,6 +3,7 @@ from litellm import acompletion
 from pydantic import BaseModel, Field
 
 from src.config.config import settings
+from src.excetion.exceptions import InvalidParamException, ResponseException, ResponseBlankException
 from src.provider.interface import Provider
 from src.schema.message import Message, ToolDefinition, Role, ToolCall, TokenUsage
 
@@ -58,7 +59,7 @@ class MyChat(BaseModel):
                         "content": message.content,
                     })
             else:
-                raise ValueError(f"Invalid role: {message.role}")
+                raise InvalidParamException(message=f"Invalid role: {message.role}")
 
         # 工具定义转换
         tool_defines = []
@@ -88,11 +89,11 @@ class MyChat(BaseModel):
             )
         except Exception as e:
             logger.exception(f"{self.llm_provider.value} API 响应失败")
-            raise ValueError(f"{self.llm_provider.value} API 请求失败", e)
+            raise ResponseException(message=f"{self.llm_provider.value} API 请求失败") from e
 
         if not openai_res.choices:
             logger.exception(f"{self.llm_provider.value} API 响应结果为空")
-            raise ValueError(f"{self.llm_provider.value} API 响应结果为空")
+            raise ResponseBlankException(message=f"{self.llm_provider.value} API 响应结果为空")
 
         res_message = openai_res.choices[0].message
         res_tool_calls = []

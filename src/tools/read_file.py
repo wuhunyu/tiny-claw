@@ -6,6 +6,7 @@ import aiofiles
 from pydantic import BaseModel, Field
 
 from src.config.config import settings
+from src.excetion.exceptions import InvalidParamException, FileNotExistException, NotFileException, ToolInvokeException
 from src.schema.message import ToolDefinition
 from src.util.path_util import absolute_path
 
@@ -47,14 +48,14 @@ class ReadFile(BaseModel):
     async def execute(self, arguments: dict[str, Any] | str | None) -> str:
         if not arguments:
             logger.info("请指定 file_name")
-            raise ValueError("请指定 file_name")
+            raise InvalidParamException(message="请指定 file_name")
         if isinstance(arguments, dict):
             read_file_params = ReadFileParams.model_validate(arguments)
         elif isinstance(arguments, str):
             read_file_params = ReadFileParams.model_validate_json(arguments)
         else:
             logger.info(f"{self.name()} 格式错误")
-            raise ValueError(f"{self.name()} 格式错误")
+            raise InvalidParamException(message=f"{self.name()} 格式错误")
 
         # 路径判断
         try:
@@ -62,25 +63,25 @@ class ReadFile(BaseModel):
                 self.work_dir,
                 read_file_params.file_name
             )
-        except IOError:
+        except IOError as e:
             logger.info(f"文件不存在: {read_file_params.file_name}", exc_info=True)
-            raise
+            raise FileNotExistException(message=f"文件不存在: {read_file_params.file_name}") from e
 
         target_path = pathlib.Path(absolute_path_file)
         # 是否存在
         if not target_path.exists():
             logger.info(f"文件不存在: {read_file_params.file_name}")
-            raise ValueError(f"文件不存在: {read_file_params.file_name}")
+            raise FileNotExistException(message=f"文件不存在: {read_file_params.file_name}")
         if not target_path.is_file():
             logger.info(f"不是文件: {read_file_params.file_name}")
-            raise ValueError(f"不是文件: {read_file_params.file_name}")
+            raise NotFileException(message=f"不是文件: {read_file_params.file_name}")
         # 执行读取任务
         try:
             async with aiofiles.open(target_path, "r") as f:
                 content = await f.read()
         except Exception as e:
             logger.warning(f"读取文件内容失败: {read_file_params.file_name}", exc_info=True)
-            raise ValueError(f"读取文件内容失败: {read_file_params.file_name}", e)
+            raise ToolInvokeException(message=f"读取文件内容失败: {read_file_params.file_name}") from e
 
         # 超长截取
         if len(content) > MAX_LEN:

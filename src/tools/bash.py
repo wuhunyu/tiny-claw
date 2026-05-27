@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
+from src.excetion.exceptions import InvalidParamException, ToolInvokeException
 from src.schema.message import ToolDefinition
 
 logger = logging.getLogger(__name__)
@@ -50,22 +51,22 @@ class Bash(BaseModel):
     async def execute(self, arguments: dict[str, Any] | str | None) -> str:
         if not arguments:
             logger.info("请指定 command")
-            raise ValueError("请指定 command")
+            raise InvalidParamException(message="请指定 command")
         if isinstance(arguments, dict):
             try:
                 bash_params = BashParams.model_validate(arguments)
             except ValidationError as e:
                 logger.info(f"{self.name()} 输入参数格式错误: {e}")
-                raise ValueError(f"{self.name()} 参数格式错误: {e}")
+                raise InvalidParamException(message=f"{self.name()} 参数格式错误: {e}")
         elif isinstance(arguments, str):
             try:
                 bash_params = BashParams.model_validate_json(arguments)
             except ValidationError as e:
                 logger.info(f"{self.name()} 参数格式错误: {e}")
-                raise ValueError(f"{self.name()} 参数格式错误: {e}")
+                raise InvalidParamException(message=f"{self.name()} 参数格式错误: {e}")
         else:
             logger.warning(f"{self.name()} 格式错误")
-            raise ValueError(f"{self.name()} 格式错误")
+            raise InvalidParamException(message=f"{self.name()} 格式错误")
 
         logger.info(f"-> 运行 {self.name()} 命令: {' '.join(bash_params.command)}")
 
@@ -81,7 +82,7 @@ class Bash(BaseModel):
             )
         except Exception as e:
             logger.exception(f"创建子进程失败: {bash_params.command}")
-            raise ValueError(f"创建子进程失败: {bash_params.command}", e)
+            raise ToolInvokeException(message=f"创建子进程失败: {bash_params.command}") from e
 
         try:
             stdout_bytes, stderr_bytes = await asyncio.wait_for(

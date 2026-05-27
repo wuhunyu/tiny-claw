@@ -5,8 +5,10 @@ from pydantic import ValidationError
 
 from src.config.config import settings
 from src.context.compactor import Compactor
+from src.context.recovery import ToolRecoveryManager
 from src.engine.reporter import Reporter
 from src.engine.session import Session
+from src.excetion.exceptions import TinyClawException, ResponseParseException
 from src.provider.interface import LLMProvider
 from src.schema.message import Role, Message, ToolCall, ToolResult, OutputSchema
 from src.tools.registry import Registry
@@ -19,6 +21,7 @@ class AgentEngine:
     compactor: Compactor
     registry: Registry
     reporter: Reporter
+    tool_recovery_manager: ToolRecoveryManager
     work_dir: str
     enable_thinking: bool
 
@@ -28,6 +31,7 @@ class AgentEngine:
             compactor: Compactor,
             registry: Registry,
             reporter: Reporter,
+            tool_recovery_manager: ToolRecoveryManager,
             work_dir: str = settings.work_dir,
             enable_thinking: bool = False,
     ):
@@ -35,6 +39,7 @@ class AgentEngine:
         self.compactor = compactor
         self.registry = registry
         self.reporter = reporter
+        self.tool_recovery_manager = tool_recovery_manager
         self.work_dir = work_dir
         self.enable_thinking = enable_thinking
 
@@ -79,7 +84,7 @@ class AgentEngine:
                     self.reporter.on_thinking(think_resp)
                 except Exception as e:
                     logger.exception(f"thinking 阶段生成失败")
-                    raise ValueError(f"thinking 阶段生成失败: {e}")
+                    raise TinyClawException(message=f"thinking 阶段生成失败") from e
 
                 if think_resp.content:
                     await session.append([think_resp])
@@ -92,7 +97,7 @@ class AgentEngine:
                 action_resp, is_final_answer = self.parse_output(action_origin_resp)
             except Exception as e:
                 logger.exception(f"action 阶段生成失败")
-                raise ValueError(f"action 阶段生成失败: {e}")
+                raise TinyClawException(message=f"action 阶段生成失败") from e
 
             await session.append(action_resp)
             if action_resp.content:
@@ -150,7 +155,17 @@ class AgentEngine:
                             content=f"工具 {tool_call.name} 执行失败: {tool_result!r}",
                         ))
                     else:
-                        await session.append(handle_tool_result(tool_call, tool_result))
+                        if tool_result.is_error:
+                            suggest_content = await self.tool_recovery_manager.analyze(tool_call, tool_result.output)
+                            await session.append(
+                                Message(
+                                    role=Role.ROLE_TOOL,
+                                    tool_call_id=tool_call.id,
+                                    content=suggest_content,
+                                )
+                            )
+                        else:
+                            await session.append(handle_tool_result(tool_call, tool_result))
             else:
                 # 串行执行
                 for tool_call in action_resp.tool_calls:
@@ -158,7 +173,17 @@ class AgentEngine:
                     self.reporter.pre_tool_call(tool_call)
                     tool_result = await self.registry.execute(tool_call)
                     self.reporter.post_tool_call(tool_result)
-                    await session.append(handle_tool_result(tool_call, tool_result))
+                    if tool_result.is_error:
+                        suggest_content = await self.tool_recovery_manager.analyze(tool_call, tool_result.output)
+                        await session.append(
+                            Message(
+                                role=Role.ROLE_TOOL,
+                                tool_call_id=tool_call.id,
+                                content=suggest_content,
+                            )
+                        )
+                    else:
+                        await session.append(handle_tool_result(tool_call, tool_result))
 
             self.reporter.step_end(turnCount)
 
@@ -175,9 +200,9 @@ class AgentEngine:
             output = OutputSchema.model_validate_json(message_content)
         except ValidationError as e:
             logger.warning("输出结果不符合格式", exc_info=True)
-            raise ValueError(f"""
+            raise ResponseParseException(message=f"""
 输出结果不符合格式:
 {OutputSchema.JSON_EXAMPLE}
-""")
+""") from e
         message.content = output.content
         return message, output.is_final_answer

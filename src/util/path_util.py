@@ -1,6 +1,8 @@
 import logging
 import pathlib
 
+from src.excetion.exceptions import InvalidParamException, PathOutsideWorkspaceException
+
 logger = logging.getLogger(__name__)
 
 
@@ -13,7 +15,7 @@ def absolute_path(work_dir: str, path: str) -> str:
     """
     if not work_dir or not path:
         logger.info("请指定 work_dir && path")
-        raise ValueError("请指定 work_dir && path")
+        raise InvalidParamException(message="请指定 work_dir && path")
     # 获取工作空间路径的绝对路径
     absolute_work_dir = pathlib.Path(work_dir).expanduser().resolve()
     input_path = pathlib.Path(path).expanduser()
@@ -24,5 +26,5 @@ def absolute_path(work_dir: str, path: str) -> str:
     # 操作目录是否在工作目录下
     if not target_path.is_relative_to(absolute_work_dir):
         logger.info(f"{path} 不在工作区 {work_dir} 下")
-        raise IOError(f"{path} 不在工作区 {work_dir} 下")
+        raise PathOutsideWorkspaceException(message=f"{path} 不在工作区 {work_dir} 下")
     return str(target_path)

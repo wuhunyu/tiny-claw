@@ -1,6 +1,7 @@
 import logging
 from typing import Protocol, Any
 
+from src.excetion.exceptions import InvalidParamException
 from src.schema.message import ToolDefinition, ToolCall, ToolResult
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ class RegistryImpl:
 
     async def registry(self, tool: BaseTool) -> None:
         if not tool:
-            raise ValueError("工具不能为空")
+            raise InvalidParamException(message="工具不能为空")
         if tool.name() in self._tools:
             logger.info(f"[Registry] 工具 {tool.name()} 已存在，将要执行覆盖")
         self._tools[tool.name()] = tool
