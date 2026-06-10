@@ -7,9 +7,9 @@ from litellm.responses.main import aresponses
 from pydantic import BaseModel, Field, ValidationError
 
 from src.config.config import settings
-from src.excetion.exceptions import TinyClawException, InvalidParamException, ResponseException, ResponseBlankException
+from src.excetion.exceptions import InvalidParamException, ResponseException, ResponseBlankException
 from src.provider.interface import Provider
-from src.schema.message import ToolCall, Message, Role
+from src.schema.message import ToolCall
 from src.tools.registry import Registry
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ class ToolRecoveryConfidence(str, Enum):
 class ToolRecovery(BaseModel):
     action: ToolRecoveryAction = Field(..., description="工具恢复动作")
     reason: str = Field(..., description="简短说明为什么这么恢复")
-    tool_call: ToolCall = Field(..., description="如果 action=retry，则这里放修正后的 ToolCall")
+    tool_call: ToolCall | None = Field(..., description="如果 action=retry，则这里放修正后的 ToolCall")
     question: str | None = Field(default=None, description="如果 action=ask_user，则这里放要问用户的问题")
     confidence: ToolRecoveryConfidence = Field(default=ToolRecoveryConfidence.MEDIUM, description="工具恢复的置信度")
 
@@ -69,64 +69,128 @@ class ToolRecovery(BaseModel):
         return {
             "type": "json_schema",
             "json_schema": {
-                "name": "tool_recovery",
-                "strict": True,
                 "schema": {
-                    "type": "object",
-                    "additionalProperties": False,
+                    "$defs": {
+                        "ToolCall": {
+                            "properties": {
+                                "id": {
+                                    "description": "工具调用ID",
+                                    "title": "Id",
+                                    "type": "string"
+                                },
+                                "name": {
+                                    "description": "工具名称",
+                                    "title": "Name",
+                                    "type": "string"
+                                },
+                                "arguments": {
+                                    "anyOf": [
+                                        {
+                                            "type": "string"
+                                        },
+                                        {
+                                            "type": "null"
+                                        }
+                                    ],
+                                    "description": "工具调用参数",
+                                    "title": "Arguments"
+                                }
+                            },
+                            "required": [
+                                "id",
+                                "name",
+                                "arguments"
+                            ],
+                            "title": "ToolCall",
+                            "type": "object",
+                            "additionalProperties": False
+                        },
+                        "ToolRecoveryAction": {
+                            "enum": [
+                                "retry",
+                                "ask_user",
+                                "skip",
+                                "fail"
+                            ],
+                            "title": "ToolRecoveryAction",
+                            "type": "string"
+                        },
+                        "ToolRecoveryConfidence": {
+                            "enum": [
+                                "low",
+                                "medium",
+                                "high"
+                            ],
+                            "title": "ToolRecoveryConfidence",
+                            "type": "string"
+                        }
+                    },
                     "properties": {
                         "action": {
-                            "type": "string",
                             "description": "工具恢复动作",
-                            "enum": ["retry", "ask_user", "skip", "fail"],
+                            "enum": [
+                                "retry",
+                                "ask_user",
+                                "skip",
+                                "fail"
+                            ],
+                            "title": "ToolRecoveryAction",
+                            "type": "string"
                         },
                         "reason": {
-                            "type": "string",
                             "description": "简短说明为什么这么恢复",
+                            "title": "Reason",
+                            "type": "string"
                         },
                         "tool_call": {
-                            "description": "如果 action=retry，则这里放修正后的 ToolCall；否则为 null",
                             "anyOf": [
                                 {
-                                    "type": "object",
-                                    "additionalProperties": False,
-                                    "properties": {
-                                        "name": {
-                                            "type": "string",
-                                            "description": "要调用的工具名称",
-                                        },
-                                        "arguments": {
-                                            "type": "object",
-                                            "description": "工具调用参数",
-                                            "additionalProperties": True,
-                                        },
-                                    },
-                                    "required": ["name", "arguments"],
+                                    "$ref": "#/$defs/ToolCall"
                                 },
                                 {
-                                    "type": "null",
-                                },
+                                    "type": "null"
+                                }
                             ],
+                            "description": "如果 action=retry，则这里放修正后的 ToolCall"
                         },
                         "question": {
-                            "type": ["string", "null"],
-                            "description": "如果 action=ask_user，则这里放要问用户的问题；否则为 null",
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "如果 action=ask_user，则这里放要问用户的问题",
+                            "title": "Question"
                         },
                         "confidence": {
-                            "type": "string",
+                            "default": "medium",
                             "description": "工具恢复的置信度",
-                            "enum": ["low", "medium", "high"],
-                        },
+                            "enum": [
+                                "low",
+                                "medium",
+                                "high"
+                            ],
+                            "title": "ToolRecoveryConfidence",
+                            "type": "string"
+                        }
                     },
                     "required": [
                         "action",
                         "reason",
                         "tool_call",
                         "question",
-                        "confidence",
+                        "confidence"
                     ],
+                    "title": "ToolRecovery",
+                    "type": "object",
+                    "additionalProperties": False
                 },
-            },
+                "name": "ToolRecovery",
+                "strict": True
+            }
         }
 
 
@@ -146,7 +210,7 @@ class ToolRecoveryLLM(BaseModel):
         tools = tools or []
         try:
             resp = await aresponses(
-                url=self.base_url,
+                api_base=self.base_url,
                 api_key=self.api_key,
                 model=self.model,
                 input=messages,
@@ -215,8 +279,17 @@ class ToolRecoveryManager:
             return None
         # 消息内容
         messages = [
-            ("system", ToolRecoveryManager.TOOL_RECOVERY_SYSTEM_PROMPT),
-            ("user", self._build_tool_recovery_user_prompt(tool_call=tool_call, error_description=error_description)),
+            {
+                "role": "system",
+                "content": ToolRecoveryManager.TOOL_RECOVERY_SYSTEM_PROMPT,
+            },
+            {
+                "role": "user",
+                "content": self._build_tool_recovery_user_prompt(
+                    tool_call=tool_call,
+                    error_description=error_description
+                ),
+            },
         ]
 
         # 可用工具
@@ -224,17 +297,15 @@ class ToolRecoveryManager:
         for available_tool in await self.tool_registry.get_available_tools():
             tool_defines.append({
                 "type": "function",
-                "function": {
-                    "name": available_tool.name,
-                    "description": available_tool.description,
-                    "parameters": {
-                        "type": "object",
-                        "properties": available_tool.input_schema.get("properties", {}),
-                        "required": available_tool.input_schema.get("required", []),
-                        "additionalProperties": False
-                    },
-                    "strict": True
-                }
+                "name": available_tool.name,
+                "description": available_tool.description,
+                "parameters": {
+                    "type": "object",
+                    "properties": available_tool.input_schema.get("properties", {}),
+                    "required": available_tool.input_schema.get("required", []),
+                    "additionalProperties": False
+                },
+                "strict": True
             })
 
         tool_recovery = await self.tool_recovery_llm.generate(

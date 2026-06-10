@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
+from src.core.context import Context
 from src.excetion.exceptions import InvalidParamException, ToolInvokeException
 from src.schema.message import ToolDefinition
 
@@ -48,7 +49,7 @@ class Bash(BaseModel):
             }
         )
 
-    async def execute(self, arguments: dict[str, Any] | str | None) -> str:
+    async def execute(self, context: Context, arguments: dict[str, Any] | str | None) -> str:
         if not arguments:
             logger.info("请指定 command")
             raise InvalidParamException(message="请指定 command")

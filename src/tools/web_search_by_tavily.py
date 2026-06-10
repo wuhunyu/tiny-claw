@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from tavily import AsyncTavilyClient
 
 from src.config.config import settings
+from src.core.context import Context
 from src.excetion.exceptions import InvalidParamException
 from src.schema.message import ToolDefinition
 
@@ -66,7 +67,7 @@ class WebSearchByTavily:
             }
         )
 
-    async def execute(self, arguments: dict[str, Any] | str | None) -> str:
+    async def execute(self, context: Context, arguments: dict[str, Any] | str | None) -> str:
         if not arguments:
             logger.info("请指定 query")
             raise InvalidParamException(message="请指定 query")

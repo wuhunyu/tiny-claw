@@ -51,6 +51,8 @@ class AppSettings(BaseSettings):
         min_length=1,
     )
 
+    reminder_max_count: int = Field(default=3, alias="REMINDER_MAX_COUNT", description="最大提醒次数")
+
     enable_thinking: bool = Field(default=False, alias="ENABLE_THINKING", description="是否启用思考模式")
 
     bash_timeout: int = Field(default=30, alias="BASH_TIMEOUT", description="Bash 命令执行超时时间", ge=1)

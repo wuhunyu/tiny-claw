@@ -5,6 +5,7 @@ from typing import Any
 import aiofiles.os
 from pydantic import BaseModel, Field, ValidationError
 
+from src.core.context import Context
 from src.excetion.exceptions import InvalidParamException, FileNotExistException, FilePermissionException
 from src.schema.message import ToolDefinition
 from src.util.path_util import absolute_path
@@ -47,7 +48,7 @@ class WriteFile(BaseModel):
             }
         )
 
-    async def execute(self, arguments: dict[str, Any] | str | None) -> str:
+    async def execute(self, context: Context, arguments: dict[str, Any] | str | None) -> str:
         if not arguments:
             logger.info("请指定 file_name 和 content")
             raise InvalidParamException(message="请指定 file_name 和 content")

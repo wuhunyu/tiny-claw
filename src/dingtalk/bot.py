@@ -10,6 +10,7 @@ from src.config.config import settings
 from src.context.compactor import Compactor
 from src.context.composer import PromptComposer
 from src.context.recovery import ToolRecoveryManager
+from src.core.context import Context
 from src.engine.loop import AgentEngine
 from src.engine.session import SessionManager
 from src.provider.chat import MyChat
@@ -106,13 +107,19 @@ class DingTalkBotHandler(dingtalk_stream.ChatbotHandler):
                     work_dir=self.work_dir,
                 )
 
+                # 创建一个上下文对象
+                context = Context(
+                    session_id=session_id
+                )
+
                 # 运行 loop
                 await agent_engine.run(
+                    context=context,
                     user_prompt=content_strip,
                     system_prompt=system_prompt,
                     session=session,
                 )
-        except Exception:
+        except:
             logger.exception("loop 运行失败")
             return AckMessage.STATUS_SYSTEM_EXCEPTION, 'error'
         return AckMessage.STATUS_OK, 'ok'
@@ -131,28 +138,28 @@ class DingTalkBotReporter:
         self.incoming_message.at_users = []
         self.handler.reply_text(text, self.incoming_message)
 
-    def session_start(self) -> None:
+    def session_start(self, context: Context) -> None:
         pass
 
-    def session_end(self) -> None:
+    def session_end(self, context: Context) -> None:
         pass
 
-    def step_start(self, step_count: int) -> None:
+    def step_start(self, context: Context, step_count: int) -> None:
         pass
 
-    def step_end(self, step_count: int) -> None:
+    def step_end(self, context: Context, step_count: int) -> None:
         pass
 
-    def on_thinking(self, message: Message) -> None:
+    def on_thinking(self, context: Context, message: Message) -> None:
         self.reply(f"思考结果: {message.content}")
 
-    def pre_tool_call(self, tool_call: ToolCall) -> None:
+    def pre_tool_call(self, context: Context, tool_call: ToolCall) -> None:
         self.reply(f"🛠️ 执行工具: {tool_call.name}, 参数: {tool_call.arguments}")
 
-    def post_tool_call(self, tool_result: ToolResult) -> None:
+    def post_tool_call(self, context: Context, tool_result: ToolResult) -> None:
         pass
 
-    def on_message(self, message: Message) -> None:
+    def on_message(self, context: Context, message: Message) -> None:
         self.reply(f"{message.content}")
 
 

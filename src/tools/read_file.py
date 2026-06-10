@@ -6,6 +6,7 @@ import aiofiles
 from pydantic import BaseModel, Field
 
 from src.config.config import settings
+from src.core.context import Context
 from src.excetion.exceptions import InvalidParamException, FileNotExistException, NotFileException, ToolInvokeException
 from src.schema.message import ToolDefinition
 from src.util.path_util import absolute_path
@@ -45,7 +46,7 @@ class ReadFile(BaseModel):
             }
         )
 
-    async def execute(self, arguments: dict[str, Any] | str | None) -> str:
+    async def execute(self, context: Context, arguments: dict[str, Any] | str | None) -> str:
         if not arguments:
             logger.info("请指定 file_name")
             raise InvalidParamException(message="请指定 file_name")

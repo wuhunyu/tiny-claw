@@ -3,6 +3,7 @@ from litellm import acompletion
 from pydantic import BaseModel, Field
 
 from src.config.config import settings
+from src.core.context import Context
 from src.excetion.exceptions import InvalidParamException, ResponseException, ResponseBlankException
 from src.provider.interface import Provider
 from src.schema.message import Message, ToolDefinition, Role, ToolCall, TokenUsage
@@ -18,6 +19,7 @@ class MyChat(BaseModel):
 
     async def generate(
             self,
+            context: Context,
             messages: list[Message],
             available_tools: list[ToolDefinition],
     ) -> tuple[Message, TokenUsage]:

@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from src.config.config import settings
 from src.context.compactor import Compactor
 from src.context.recovery import ToolRecoveryManager
+from src.core.context import Context
 from src.engine.reporter import Reporter
 from src.engine.session import Session
 from src.excetion.exceptions import TinyClawException, ResponseParseException
@@ -45,6 +46,7 @@ class AgentEngine:
 
     async def run(
             self,
+            context: Context,
             user_prompt: str,
             system_prompt: Message,
             session: Session,
@@ -67,21 +69,21 @@ class AgentEngine:
         else:
             await session.append(user_prompt)
 
-        self.reporter.session_start()
+        self.reporter.session_start(context)
         turnCount = 0
         while True:
             turnCount += 1
             logger.info(f"========== [Turn {turnCount}] 开始 ==========")
-            self.reporter.step_start(turnCount)
+            self.reporter.step_start(context, turnCount)
 
             if self.enable_thinking:
                 logger.info(f"[Engine][Phase 1] 剥夺工具访问权，强制进入慢思考与规划阶段...")
                 try:
                     context_history = await self.compact(session, initial_messages)
-                    think_origin_resp, _ = await self.provider.generate(context_history, [])
+                    think_origin_resp, _ = await self.provider.generate(context, context_history, [])
                     think_resp, _ = self.parse_output(think_origin_resp)
                     logger.info(f"[Engine][Phase 1] 思考结果: {think_resp.content}")
-                    self.reporter.on_thinking(think_resp)
+                    self.reporter.on_thinking(context, think_resp)
                 except Exception as e:
                     logger.exception(f"thinking 阶段生成失败")
                     raise TinyClawException(message=f"thinking 阶段生成失败") from e
@@ -93,7 +95,7 @@ class AgentEngine:
             try:
                 logger.info(f"[Engine][Phase 2] 恢复工具挂载，等待模型采取行动...")
                 context_history = await self.compact(session, initial_messages)
-                action_origin_resp, _ = await self.provider.generate(context_history, available_tools)
+                action_origin_resp, _ = await self.provider.generate(context, context_history, available_tools)
                 action_resp, is_final_answer = self.parse_output(action_origin_resp)
             except Exception as e:
                 logger.exception(f"action 阶段生成失败")
@@ -102,13 +104,13 @@ class AgentEngine:
             await session.append(action_resp)
             if action_resp.content:
                 logger.info(f"🤖 [对外回复]: {action_resp.content}")
-                self.reporter.on_message(action_resp)
+                self.reporter.on_message(context, action_resp)
 
             if is_final_answer:
                 logger.info("[Engine] 模型未请求调用工具，任务宣告完成。")
                 await session.append(action_resp)
-                self.reporter.step_end(turnCount)
-                self.reporter.session_end()
+                self.reporter.step_end(context, turnCount)
+                self.reporter.session_end(context)
                 break
 
             logger.info(f"[Engine] 模型请求调用 {len(action_resp.tool_calls)} 个工具...")
@@ -137,9 +139,9 @@ class AgentEngine:
                 # 并发读
                 async def wrap_tool_execute(tc: ToolCall) -> ToolResult:
                     logger.info(f"-> 🛠️ 并发执行工具: {tc.name}, 参数: {tc.arguments}")
-                    self.reporter.pre_tool_call(tc)
-                    tr = await self.registry.execute(tc)
-                    self.reporter.post_tool_call(tr)
+                    self.reporter.pre_tool_call(context, tc)
+                    tr = await self.registry.execute(context, tc)
+                    self.reporter.post_tool_call(context, tr)
                     return tr
 
                 tasks = [
@@ -170,9 +172,9 @@ class AgentEngine:
                 # 串行执行
                 for tool_call in action_resp.tool_calls:
                     logger.info(f"-> 🛠️ 串行执行工具: {tool_call.name}, 参数: {tool_call.arguments}")
-                    self.reporter.pre_tool_call(tool_call)
-                    tool_result = await self.registry.execute(tool_call)
-                    self.reporter.post_tool_call(tool_result)
+                    self.reporter.pre_tool_call(context, tool_call)
+                    tool_result = await self.registry.execute(context, tool_call)
+                    self.reporter.post_tool_call(context, tool_result)
                     if tool_result.is_error:
                         suggest_content = await self.tool_recovery_manager.analyze(tool_call, tool_result.output)
                         await session.append(
@@ -185,7 +187,7 @@ class AgentEngine:
                     else:
                         await session.append(handle_tool_result(tool_call, tool_result))
 
-            self.reporter.step_end(turnCount)
+            self.reporter.step_end(context, turnCount)
 
     async def compact(self, session: Session, initial_messages: list[Message]) -> list[Message]:
         return self.compactor.compact(
