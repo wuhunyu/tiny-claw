@@ -1,6 +1,8 @@
 import asyncio
 import logging
 
+from dotenv import load_dotenv
+
 from src.config.config import settings
 from src.dingtalk.bot import create_ding_talk_bot
 
@@ -14,11 +16,14 @@ def setup_logger():
 
 
 async def main():
-    # 初始化日志
-    setup_logger()
+    # 加载环境变量
+    load_dotenv()
 
     # 导入配置
     _ = settings
+
+    # 初始化日志
+    setup_logger()
 
     # 引入 钉钉
     ding_talk_bot = await create_ding_talk_bot()

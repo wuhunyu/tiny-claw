@@ -1,17 +1,15 @@
 import asyncio
 import logging
-
-from pydantic import ValidationError
-
 from src.config.config import settings
 from src.context.compactor import Compactor
 from src.context.recovery import ToolRecoveryManager
 from src.core.context import Context
+from src.engine.channel import ChannelMessage
 from src.engine.reporter import Reporter
 from src.engine.session import Session
-from src.excetion.exceptions import TinyClawException, ResponseParseException
+from src.excetion.exceptions import TinyClawException
 from src.provider.interface import LLMProvider
-from src.schema.message import Role, Message, ToolCall, ToolResult, OutputSchema
+from src.schema.message import Role, Message, ToolCall, ToolResult
 from src.tools.registry import Registry
 
 logger = logging.getLogger(__name__)
@@ -32,6 +30,7 @@ class AgentEngine:
             compactor: Compactor,
             registry: Registry,
             reporter: Reporter,
+            channel_message: ChannelMessage,
             tool_recovery_manager: ToolRecoveryManager,
             work_dir: str = settings.work_dir,
             enable_thinking: bool = False,
@@ -40,6 +39,7 @@ class AgentEngine:
         self.compactor = compactor
         self.registry = registry
         self.reporter = reporter
+        self.channel_message = channel_message
         self.tool_recovery_manager = tool_recovery_manager
         self.work_dir = work_dir
         self.enable_thinking = enable_thinking
@@ -79,9 +79,8 @@ class AgentEngine:
             if self.enable_thinking:
                 logger.info(f"[Engine][Phase 1] 剥夺工具访问权，强制进入慢思考与规划阶段...")
                 try:
-                    context_history = await self.compact(session, initial_messages)
-                    think_origin_resp, _ = await self.provider.generate(context, context_history, [])
-                    think_resp, _ = self.parse_output(think_origin_resp)
+                    context_history = await self.compact(context, session, initial_messages)
+                    think_resp, _ = await self.provider.generate(context, context_history, [])
                     logger.info(f"[Engine][Phase 1] 思考结果: {think_resp.content}")
                     self.reporter.on_thinking(context, think_resp)
                 except Exception as e:
@@ -93,10 +92,9 @@ class AgentEngine:
 
             available_tools = await self.registry.get_available_tools()
             try:
-                logger.info(f"[Engine][Phase 2] 恢复工具挂载，等待模型采取行动...")
-                context_history = await self.compact(session, initial_messages)
-                action_origin_resp, _ = await self.provider.generate(context, context_history, available_tools)
-                action_resp, is_final_answer = self.parse_output(action_origin_resp)
+                logger.info(f"[Engine][Phase 2] 恢复工具挂载: {[tool.name for tool in available_tools]}")
+                context_history = await self.compact(context, session, initial_messages)
+                action_resp, _ = await self.provider.generate(context, context_history, available_tools)
             except Exception as e:
                 logger.exception(f"action 阶段生成失败")
                 raise TinyClawException(message=f"action 阶段生成失败") from e
@@ -105,12 +103,10 @@ class AgentEngine:
             if action_resp.content:
                 logger.info(f"🤖 [对外回复]: {action_resp.content}")
                 self.reporter.on_message(context, action_resp)
-
-            if is_final_answer:
-                logger.info("[Engine] 模型未请求调用工具，任务宣告完成。")
                 await session.append(action_resp)
                 self.reporter.step_end(context, turnCount)
                 self.reporter.session_end(context)
+                logger.info("[Engine] 模型未请求调用工具，任务宣告完成。")
                 break
 
             logger.info(f"[Engine] 模型请求调用 {len(action_resp.tool_calls)} 个工具...")
@@ -158,7 +154,11 @@ class AgentEngine:
                         ))
                     else:
                         if tool_result.is_error:
-                            suggest_content = await self.tool_recovery_manager.analyze(tool_call, tool_result.output)
+                            suggest_content = await self.tool_recovery_manager.analyze(
+                                context,
+                                tool_call,
+                                tool_result.output,
+                            )
                             await session.append(
                                 Message(
                                     role=Role.ROLE_TOOL,
@@ -176,7 +176,11 @@ class AgentEngine:
                     tool_result = await self.registry.execute(context, tool_call)
                     self.reporter.post_tool_call(context, tool_result)
                     if tool_result.is_error:
-                        suggest_content = await self.tool_recovery_manager.analyze(tool_call, tool_result.output)
+                        suggest_content = await self.tool_recovery_manager.analyze(
+                            context,
+                            tool_call,
+                            tool_result.output,
+                        )
                         await session.append(
                             Message(
                                 role=Role.ROLE_TOOL,
@@ -189,22 +193,8 @@ class AgentEngine:
 
             self.reporter.step_end(context, turnCount)
 
-    async def compact(self, session: Session, initial_messages: list[Message]) -> list[Message]:
+    async def compact(self, context: Context, session: Session, initial_messages: list[Message]) -> list[Message]:
         return self.compactor.compact(
-            initial_messages + await session.get_working_memory(settings.max_session_window_size)
+            context=context,
+            messages=initial_messages + await session.get_working_memory(settings.max_session_window_size),
         )
-
-    def parse_output(self, message: Message) -> tuple[Message, bool]:
-        message_content = message.content
-        if not message_content:
-            return message, False
-        try:
-            output = OutputSchema.model_validate_json(message_content)
-        except ValidationError as e:
-            logger.warning("输出结果不符合格式", exc_info=True)
-            raise ResponseParseException(message=f"""
-输出结果不符合格式:
-{OutputSchema.JSON_EXAMPLE}
-""") from e
-        message.content = output.content
-        return message, output.is_final_answer

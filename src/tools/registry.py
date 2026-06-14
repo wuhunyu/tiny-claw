@@ -1,6 +1,8 @@
 import logging
 from typing import Protocol, Any, TypeAlias, Callable, Awaitable
 
+import langsmith as ls
+
 from src.core.context import Context
 from src.excetion.exceptions import InvalidParamException
 from src.schema.message import ToolDefinition, ToolCall, ToolResult
@@ -128,18 +130,36 @@ class RegistryImpl:
                 is_error=True,
             )
 
-        try:
-            res_execute = await tool.execute(context, call.arguments)
-        except:
-            logger.exception(f"[Registry] 工具 {call.name} 执行失败")
-            return ToolResult(
-                tool_call_id=call.id,
-                output=f"工具 {call.name} 执行失败",
-                is_error=True,
-            )
+        with ls.trace(
+                run_type="tool",
+                name=tool.name(),
+                inputs={
+                    "context": context,
+                    "call": call,
+                },
+                metadata={
+                    "tiny_claw_session_id": context.session_id,
+                    "tool_name": tool.name(),
+                },
+                tags=["tool"],
+        ) as run:
+            try:
+                res_execute = await tool.execute(context, call.arguments)
+                tool_result = ToolResult(
+                    tool_call_id=call.id,
+                    output=res_execute,
+                    is_error=False,
+                )
+            except Exception as e:
+                logger.exception(f"[Registry] 工具 {call.name} 执行失败")
+                tool_result = ToolResult(
+                    tool_call_id=call.id,
+                    output=f"工具 {call.name} 执行失败: {e}",
+                    is_error=True,
+                )
 
-        return ToolResult(
-            tool_call_id=call.id,
-            output=res_execute,
-            is_error=False,
-        )
+            run.end(outputs={
+                "tool_result": tool_result,
+            })
+
+        return tool_result

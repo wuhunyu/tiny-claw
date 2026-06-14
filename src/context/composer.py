@@ -3,8 +3,11 @@ import pathlib
 
 import aiofiles
 
+import langsmith as ls
+
 from src.context.skill import SkillLoader
-from src.schema.message import Message, Role, OutputSchema
+from src.core.context import Context
+from src.schema.message import Message, Role
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +28,10 @@ class PromptComposer:
         self.skill_loader = SkillLoader(work_dir=work_dir)
         self.plan_model = plan_model
 
-    async def build(self) -> Message:
+    async def build(self, context: Context) -> Message:
         prompts = [
             # 基础约束
-            """
-# 核心身份
+            """# 核心身份
 你名叫 tiny-claw，一个由驾驭工程驱动的骨灰级研发助手。
 你具备极简主义哲学，拒绝废话。
 你能通过系统提供的内置工具，创建、读取、修改和执行工作区中的代码。
@@ -39,11 +41,10 @@ class PromptComposer:
 2. 创建新文件时，务必使用 write_file，并同时提供 path 和 content 参数。
 3. 编辑文件前务必先读取现有文件，以理解上下文。
 4. 无论何时你需要写代码或创建文件，都要直接使用 write_file 工具。
-5. 遇到工具执行报错时，仔细阅读 stderr，尝试自己修正命令并重试。
-6. 始终用中文回复，以便传达你的进展和想法。
-            """,
-            # 补充输出格式要求
-            OutputSchema.PROMPT,
+5. 需要用户进行决策, 遇到无法解决的问题, 或者需要执行高危动作时, 使用 ask_user 寻求用户的帮助。
+6. 遇到工具执行报错时，仔细阅读 stderr，尝试自己修正命令并重试。
+7. 始终用中文回复，以便传达你的进展和想法。
+""",
         ]
 
         # 开启 计划模式
@@ -98,6 +99,17 @@ class PromptComposer:
         if skills_prompt:
             prompts.append(skills_prompt)
 
+        with ls.trace(
+                run_type="prompt",
+                name="system prompt",
+                metadata={
+                    "tiny_claw_session_id": context.session_id,
+                },
+                tags=["prompt", "system"],
+        ) as run:
+            run.end(outputs={
+                "prompts": prompts,
+            })
         return Message(
             role=Role.ROLE_SYSTEM,
             content="\n".join(prompts),

@@ -1,10 +1,14 @@
 import asyncio
 import logging
 import uuid
+from asyncio import Queue
 from collections import defaultdict
 
 import dingtalk_stream
-from dingtalk_stream import CallbackMessage, AckMessage, DingTalkStreamClient, Credential
+from dingtalk_stream import CallbackMessage, AckMessage, DingTalkStreamClient, Credential, ChatbotHandler, \
+    ChatbotMessage
+
+import langsmith as ls
 
 from src.config.config import settings
 from src.context.compactor import Compactor
@@ -16,6 +20,7 @@ from src.engine.session import SessionManager
 from src.provider.chat import MyChat
 from src.provider.interface import LLMProvider
 from src.schema.message import Message, ToolCall, ToolResult
+from src.tools.ask_user import AskUser
 from src.tools.bash import Bash
 from src.tools.edit_file import EditFile
 from src.tools.read_file import ReadFile
@@ -26,110 +31,11 @@ from src.tools.write_file import WriteFile
 logger = logging.getLogger(__name__)
 
 
-class DingTalkBotHandler(dingtalk_stream.ChatbotHandler):
-    work_dir: str
-    chat_client: LLMProvider
-    registry: Registry
-    tool_recovery_manager: ToolRecoveryManager
-    prompt_composer: PromptComposer
-    enable_thinking: bool
-    session_manager: SessionManager
-    _locks: dict[str, asyncio.Lock]
-
-    def __init__(
-            self,
-            work_dir: str,
-            chat_client: LLMProvider,
-            registry: Registry,
-            tool_recovery_manager: ToolRecoveryManager,
-            prompt_composer: PromptComposer,
-            enable_thinking: bool,
-            session_manager: SessionManager,
-    ):
-        super().__init__()
-        self.work_dir = work_dir
-        self.chat_client = chat_client
-        self.registry = registry
-        self.tool_recovery_manager = tool_recovery_manager
-        self.prompt_composer = prompt_composer
-        self.enable_thinking = enable_thinking
-        self.session_manager = session_manager
-        self._locks = defaultdict(asyncio.Lock)
-
-    async def process(self, callback: CallbackMessage):
-        incoming_message = dingtalk_stream.ChatbotMessage.from_dict(callback.data)
-
-        """
-        # 群聊/私聊 类型: '1' 单聊，'2' 群聊
-        conversation_type = incoming_message.conversation_type
-        # 群聊/私聊 标题
-        conversation_title = incoming_message.conversation_title
-        # 消息类型: text / picture / richText
-        message_type = incoming_message.message_type
-        # 发送人id
-        sender_id = incoming_message.sender_staff_id
-        # 发送人昵称
-        sender_nick = incoming_message.sender_nick
-        """
-
-        # 群聊/私聊 id
-        conversation_id = incoming_message.conversation_id
-        # 消息内容
-        content_strip = incoming_message.text.content.strip()
-
-        # 发起一个 loop
-        # 实例化一个 engine
-        agent_engine = AgentEngine(
-            provider=self.chat_client,
-            compactor=Compactor(),
-            registry=self.registry,
-            reporter=DingTalkBotReporter(
-                handler=self,
-                incoming_message=incoming_message,
-            ),
-            tool_recovery_manager=ToolRecoveryManager(tool_registry=self.registry),
-            work_dir=self.work_dir,
-            enable_thinking=self.enable_thinking,
-        )
-        try:
-            plan_model = self.prompt_composer.plan_model or False
-            logger.info(f"计划模式 (Plan Mode): {plan_model}")
-
-            # 加载系统提示词
-            system_prompt = await self.prompt_composer.build()
-            # 会话id
-            session_id = conversation_id or str(uuid.uuid4)
-            # 获取 会话锁
-            async with self._locks[session_id]:
-                # 获取 session 对象
-                session = await self.session_manager.get_or_create(
-                    session_id=session_id,
-                    work_dir=self.work_dir,
-                )
-
-                # 创建一个上下文对象
-                context = Context(
-                    session_id=session_id
-                )
-
-                # 运行 loop
-                await agent_engine.run(
-                    context=context,
-                    user_prompt=content_strip,
-                    system_prompt=system_prompt,
-                    session=session,
-                )
-        except:
-            logger.exception("loop 运行失败")
-            return AckMessage.STATUS_SYSTEM_EXCEPTION, 'error'
-        return AckMessage.STATUS_OK, 'ok'
-
-
 class DingTalkBotReporter:
     def __init__(
             self,
-            handler: DingTalkBotHandler,
-            incoming_message: dingtalk_stream.ChatbotMessage,
+            handler: ChatbotHandler,
+            incoming_message: ChatbotMessage,
     ):
         self.handler = handler
         self.incoming_message = incoming_message
@@ -163,10 +69,168 @@ class DingTalkBotReporter:
         self.reply(f"{message.content}")
 
 
-class DingTalkBot:
-    dingtalk_stream_client: DingTalkStreamClient
-    work_dir: str
+class DingTalkBotChannelMessage:
+    def __init__(
+            self,
+            handler: ChatbotHandler,
+            incoming_message: ChatbotMessage,
+    ):
+        self.handler = handler
+        self.incoming_message = incoming_message
+        self.queue = defaultdict(Queue)
 
+    async def send_and_receive(
+            self,
+            context: Context,
+            message: str,
+    ) -> str | None:
+        if not message or not message.strip():
+            return None
+        await asyncio.to_thread(
+            self.handler.reply_text,
+            message,
+            self.incoming_message
+        )
+        return await self.queue[context.session_id].get()
+
+    async def receive(
+            self,
+            context: Context,
+            message: str,
+    ) -> None:
+        await self.queue[context.session_id].put(message)
+
+
+class DingTalkBotHandler(ChatbotHandler):
+    def __init__(
+            self,
+            work_dir: str,
+            chat_client: LLMProvider,
+            registry: Registry,
+            tool_recovery_manager: ToolRecoveryManager,
+            prompt_composer: PromptComposer,
+            enable_thinking: bool,
+            session_manager: SessionManager,
+    ):
+        super().__init__()
+        self.work_dir = work_dir
+        self.chat_client = chat_client
+        self.registry = registry
+        self.tool_recovery_manager = tool_recovery_manager
+        self.prompt_composer = prompt_composer
+        self.enable_thinking = enable_thinking
+        self.session_manager = session_manager
+        self._locks = defaultdict(asyncio.Lock)
+        self._engines = {}
+        self.contexts = {}
+
+    async def process(self, callback: CallbackMessage):
+        incoming_message = dingtalk_stream.ChatbotMessage.from_dict(callback.data)
+
+        """
+        # 群聊/私聊 类型: '1' 单聊，'2' 群聊
+        conversation_type = incoming_message.conversation_type
+        # 群聊/私聊 标题
+        conversation_title = incoming_message.conversation_title
+        # 消息类型: text / picture / richText
+        message_type = incoming_message.message_type
+        # 发送人id
+        sender_id = incoming_message.sender_staff_id
+        # 发送人昵称
+        sender_nick = incoming_message.sender_nick
+        """
+
+        # 群聊/私聊 id
+        conversation_id = incoming_message.conversation_id
+        # 消息内容
+        content_strip = incoming_message.text.content.strip()
+
+        # 发起一个 loop
+        # 会话id
+        session_id = conversation_id or str(uuid.uuid4)
+
+        # engine 已存在
+        if session_id in self._engines and session_id in self.contexts:
+            agent_engine = self._engines[session_id]
+            # 处理已经存在的会话消息
+            await agent_engine.channel_message.receive(
+                context=self.contexts[session_id],
+                message=content_strip,
+            )
+            return AckMessage.STATUS_OK, 'ok'
+
+        # 延迟注册工具 ask_user
+        await self.registry.registry(
+            tool=AskUser(
+                channel_message=DingTalkBotChannelMessage(
+                    handler=self,
+                    incoming_message=incoming_message,
+                )
+            )
+        )
+
+        # 实例化一个 engine
+        agent_engine = AgentEngine(
+            provider=self.chat_client,
+            compactor=Compactor(),
+            registry=self.registry,
+            reporter=DingTalkBotReporter(
+                handler=self,
+                incoming_message=incoming_message,
+            ),
+            channel_message=DingTalkBotChannelMessage(
+                handler=self,
+                incoming_message=incoming_message,
+            ),
+            tool_recovery_manager=ToolRecoveryManager(tool_registry=self.registry),
+            work_dir=self.work_dir,
+            enable_thinking=self.enable_thinking,
+        )
+        self._engines[session_id] = agent_engine
+
+        try:
+            plan_model = self.prompt_composer.plan_model or False
+            logger.info(f"计划模式 (Plan Mode): {plan_model}")
+
+            # 获取 会话锁
+            async with self._locks[session_id]:
+                # 创建一个上下文对象
+                context = Context(
+                    session_id=session_id
+                )
+                self.contexts[session_id] = context
+
+                # 获取 session 对象
+                session = await self.session_manager.get_or_create(
+                    session_id=session_id,
+                    work_dir=self.work_dir,
+                )
+
+                with ls.trace(
+                        name="tiny claw loop",
+                        run_type="chain",
+                        metadata={
+                            "tiny_claw_session_id": context.session_id,
+                        },
+                        tags=["loop"],
+                ):
+                    # 加载系统提示词
+                    system_prompt = await self.prompt_composer.build(context=context)
+
+                    # 运行 loop
+                    await agent_engine.run(
+                        context=context,
+                        user_prompt=content_strip,
+                        system_prompt=system_prompt,
+                        session=session,
+                    )
+        except:
+            logger.exception("loop 运行失败")
+            return AckMessage.STATUS_SYSTEM_EXCEPTION, 'error'
+        return AckMessage.STATUS_OK, 'ok'
+
+
+class DingTalkBot:
     def __init__(
             self,
             dingtalk_stream_client: DingTalkStreamClient,

@@ -77,6 +77,18 @@ class AppSettings(BaseSettings):
         description="短期记忆留存的消息数",
     )
 
+    langsmith_tracing: bool = Field(default=False, alias="LANGSMITH_TRACING", description="是否启用 LangSmith 追踪")
+    langsmith_api_key: str = Field(
+        default_factory=lambda: os.environ.get("LANGSMITH_API_KEY"),
+        alias="LANGSMITH_API_KEY",
+        description="LangSmith API Key",
+    )
+    langsmith_project: str = Field(
+        default_factory=lambda: os.environ.get("LANGSMITH_PROJECT"),
+        alias="LANGSMITH_PROJECT",
+        description="LangSmith 项目名称",
+    )
+
     @field_validator("work_dir")
     @classmethod
     def normalize_work_dir(cls, value: str) -> str:

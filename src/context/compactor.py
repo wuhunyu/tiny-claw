@@ -3,7 +3,10 @@ import logging
 import tiktoken
 from tiktoken import Encoding
 
+import langsmith as ls
+
 from src.config.config import settings
+from src.core.context import Context
 from src.schema.message import Message, Role
 
 logger = logging.getLogger(__name__)
@@ -32,7 +35,7 @@ class Compactor:
             # fallback to o200k_base
             self.encoding = tiktoken.get_encoding("o200k_base")
 
-    def compact(self, messages: list[Message]) -> list[Message]:
+    def compact(self, context: Context, messages: list[Message]) -> list[Message]:
         # 估算消息的 token 长度
         tokens = self.estimate_message_tokens(messages)
         if tokens <= self.model_context_window_tokens * self.compact_watermark_ratio:
@@ -77,6 +80,24 @@ class Compactor:
         # 估算压缩之后的消息的 token 长度
         compact_tokens = self.estimate_message_tokens(ans)
         logger.info(f"[Compactor] ✅ 压缩完成。上下文长度从 {tokens} tokens 降至 {compact_tokens} tokens")
+
+        with ls.trace(
+                run_type="prompt",
+                name="compact prompt",
+                inputs={
+                    "message": messages,
+                },
+                metadata={
+                    "tiny_claw_session_id": context.session_id,
+                    "source_tokens": tokens,
+                    "compact_tokens": compact_tokens,
+                },
+                tags=["prompt", "compact"],
+        ) as run:
+            run.end(outputs={
+                "compact_message": ans,
+            })
+
         return ans
 
     def estimate_message_tokens(self, messages: list[Message]) -> int:

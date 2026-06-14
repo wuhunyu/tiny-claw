@@ -1,6 +1,10 @@
 import logging
+import traceback
+
 from litellm import acompletion
 from pydantic import BaseModel, Field
+
+import langsmith as ls
 
 from src.config.config import settings
 from src.core.context import Context
@@ -81,17 +85,37 @@ class MyChat(BaseModel):
                 }
             })
 
-        try:
-            openai_res = await acompletion(
-                base_url=self.base_url,
-                api_key=self.api_key,
-                model=f"{self.llm_provider.value}/{self.model}",
-                messages=openai_messages,
-                tools=tool_defines,
-            )
-        except Exception as e:
-            logger.exception(f"{self.llm_provider.value} API 响应失败")
-            raise ResponseException(message=f"{self.llm_provider.value} API 请求失败") from e
+        model_name = f"{self.llm_provider.value}/{self.model}"
+
+        with ls.trace(
+                run_type="llm",
+                name=model_name,
+                inputs={
+                    "message": openai_messages,
+                    "tools": tool_defines,
+                },
+                metadata={
+                    "tiny_claw_session_id": context.session_id,
+                    "base_url": self.base_url,
+                    "model": model_name,
+                },
+                tags=["llm"],
+        ) as run:
+            try:
+                openai_res = await acompletion(
+                    base_url=self.base_url,
+                    api_key=self.api_key,
+                    model=model_name,
+                    messages=openai_messages,
+                    tools=tool_defines,
+                )
+                run.end(outputs={
+                    "llm_res": openai_res,
+                })
+            except Exception as e:
+                logger.exception(f"{self.llm_provider.value} API 响应失败")
+                run.end(error=traceback.format_exc())
+                raise ResponseException(message=f"{self.llm_provider.value} API 请求失败") from e
 
         if not openai_res.choices:
             logger.exception(f"{self.llm_provider.value} API 响应结果为空")
