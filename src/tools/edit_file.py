@@ -24,17 +24,20 @@ class EditFileParams(BaseModel):
 class EditFile(BaseModel):
     work_dir: str = Field(..., description="工作目录")
 
-    def name(self) -> str:
+    @staticmethod
+    def name() -> str:
         return "edit_file"
 
-    def readonly(self) -> bool:
+    @staticmethod
+    def readonly() -> bool:
         return False
 
-    def definition(self) -> ToolDefinition:
+    @staticmethod
+    def definition() -> ToolDefinition:
         return ToolDefinition(
-            name=self.name(),
+            name=EditFile.name(),
             description="对现有文件进行局部的字符串替换。这比重写整个文件更安全、更快速。请提供足够的 old_text 上下文以确保匹配的唯一性。",
-            readonly=self.readonly(),
+            readonly=EditFile.readonly(),
             input_schema={
                 "type": "object",
                 "properties": {
@@ -134,6 +137,7 @@ class EditFile(BaseModel):
         # 第四阶段: 逐行去缩进匹配(最强力的容错: 消除大模型遗漏缩进的幻觉)
         return self._line_by_line_replace(normalized_original_text, normalized_old_text, new_text)
 
+    @staticmethod
     def _line_by_line_replace(self, original_text: str, old_text: str, new_text: str) -> str:
         # 按行切割
         # 原文保留前后空格

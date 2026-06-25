@@ -23,17 +23,20 @@ class Bash(BaseModel):
     work_dir: str = Field(..., description="工作目录")
     timeout: int = Field(default=30, description="超时时间(秒)")
 
-    def name(self) -> str:
+    @staticmethod
+    def name() -> str:
         return "bash"
 
-    def readonly(self) -> bool:
+    @staticmethod
+    def readonly() -> bool:
         return False
 
-    def definition(self) -> ToolDefinition:
+    @staticmethod
+    def definition() -> ToolDefinition:
         return ToolDefinition(
-            name=self.name(),
+            name=Bash.name(),
             description="执行 bash 命令",
-            readonly=self.readonly(),
+            readonly=Bash.readonly(),
             input_schema={
                 "type": "object",
                 "properties": {
@@ -117,6 +120,7 @@ class Bash(BaseModel):
         logger.info(f"-> 执行成功: {stdout}")
         return f"执行成功: {bash_params.command}\n{stdout}"
 
+    @staticmethod
     def _kill_process_group(self, process: asyncio.subprocess.Process) -> None:
         try:
             os.killpg(os.getpgid(process.pid), signal.SIGKILL)

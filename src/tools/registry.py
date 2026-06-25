@@ -11,13 +11,16 @@ logger = logging.getLogger(__name__)
 
 
 class BaseTool(Protocol):
-    def name(self) -> str:
+    @staticmethod
+    def name() -> str:
         ...
 
-    def readonly(self) -> bool:
+    @staticmethod
+    def readonly() -> bool:
         ...
 
-    def definition(self) -> ToolDefinition:
+    @staticmethod
+    def definition() -> ToolDefinition:
         ...
 
     async def execute(self, context: Context, arguments: dict[str, Any] | str | None) -> str:

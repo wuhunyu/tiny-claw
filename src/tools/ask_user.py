@@ -19,17 +19,20 @@ class AskUser:
     def __init__(self, channel_message: ChannelMessage):
         self.channel_message = channel_message
 
-    def name(self) -> str:
+    @staticmethod
+    def name() -> str:
         return "ask_user"
 
-    def readonly(self) -> bool:
+    @staticmethod
+    def readonly() -> bool:
         return False
 
-    def definition(self) -> ToolDefinition:
+    @staticmethod
+    def definition() -> ToolDefinition:
         return ToolDefinition(
-            name=self.name(),
+            name=AskUser.name(),
             description="需要用户进行决策, 遇到无法解决的问题, 或者需要执行高危动作时, 请求用户的帮助. 问题需要凝练, 且只能在其它 tool 无法处理时调用",
-            readonly=self.readonly(),
+            readonly=AskUser.readonly(),
             input_schema={
                 "type": "object",
                 "properties": {

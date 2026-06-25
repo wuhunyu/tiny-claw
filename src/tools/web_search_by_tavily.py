@@ -30,17 +30,20 @@ class WebSearchByTavily:
         tavily_api_key = tavily_api_key or settings.tavily_api_key
         self.tavily_client = AsyncTavilyClient(api_key=tavily_api_key)
 
-    def name(self) -> str:
+    @staticmethod
+    def name() -> str:
         return "web_search_by_tavily"
 
-    def readonly(self) -> bool:
+    @staticmethod
+    def readonly() -> bool:
         return True
 
-    def definition(self) -> ToolDefinition:
+    @staticmethod
+    def definition() -> ToolDefinition:
         return ToolDefinition(
-            name=self.name(),
+            name=WebSearchByTavily.name(),
             description="网络搜索 by Tavily",
-            readonly=self.readonly(),
+            readonly=WebSearchByTavily.readonly(),
             input_schema={
                 "type": "object",
                 "properties": {

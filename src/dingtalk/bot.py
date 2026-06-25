@@ -17,6 +17,7 @@ from src.context.recovery import ToolRecoveryManager
 from src.core.context import Context
 from src.engine.loop import AgentEngine
 from src.engine.session import SessionManager
+from src.middleware.approval import ApprovalManager
 from src.provider.chat import OpenaiChat
 from src.provider.chat_wrap import LLMProviderCostTrackerWrap
 from src.provider.interface import LLMProvider
@@ -178,13 +179,22 @@ class DingTalkBotHandler(ChatbotHandler):
                     work_dir=self.work_dir,
                 )
 
+                ding_talk_bot_channel_message = DingTalkBotChannelMessage(
+                    handler=self,
+                    incoming_message=incoming_message,
+                )
+
                 # 延迟注册工具 ask_user
                 await self.registry.registry(
                     tool=AskUser(
-                        channel_message=DingTalkBotChannelMessage(
-                            handler=self,
-                            incoming_message=incoming_message,
-                        )
+                        channel_message=ding_talk_bot_channel_message
+                    )
+                )
+
+                # 延迟注册中间件
+                await self.registry.registry_middleware(
+                    middleware=ApprovalManager(
+                        channel_message=ding_talk_bot_channel_message,
                     )
                 )
 

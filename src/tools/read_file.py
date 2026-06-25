@@ -23,17 +23,20 @@ class ReadFileParams(BaseModel):
 class ReadFile(BaseModel):
     work_dir: str = Field(default=settings.work_dir, description="工作区")
 
-    def name(self) -> str:
+    @staticmethod
+    def name() -> str:
         return "read_file"
 
-    def readonly(self) -> bool:
+    @staticmethod
+    def readonly() -> bool:
         return True
 
-    def definition(self) -> ToolDefinition:
+    @staticmethod
+    def definition() -> ToolDefinition:
         return ToolDefinition(
-            name=self.name(),
+            name=ReadFile.name(),
             description="读取指定文件内容",
-            readonly=self.readonly(),
+            readonly=ReadFile.readonly(),
             input_schema={
                 "type": "object",
                 "properties": {

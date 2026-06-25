@@ -21,17 +21,20 @@ class WriteFileParams(BaseModel):
 class WriteFile(BaseModel):
     work_dir: str = Field(..., description="工作目录")
 
-    def name(self) -> str:
+    @staticmethod
+    def name() -> str:
         return "write_file"
 
-    def readonly(self) -> bool:
+    @staticmethod
+    def readonly() -> bool:
         return False
 
-    def definition(self) -> ToolDefinition:
+    @staticmethod
+    def definition() -> ToolDefinition:
         return ToolDefinition(
-            name=self.name(),
+            name=WriteFile.name(),
             description="创建或覆盖写入一个文件。如果目录不存在会自动创建",
-            readonly=self.readonly(),
+            readonly=WriteFile.readonly(),
             input_schema={
                 "type": "object",
                 "properties": {
