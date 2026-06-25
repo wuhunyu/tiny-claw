@@ -54,7 +54,7 @@ class PromptComposer:
   - `write_file` 参数：`file_name`、`content`。
   - `edit_file` 参数：`file_name`、`old_text`、`new_text`。
   - `bash` 参数：`command`，类型为字符串数组；不要额外包一层 `bash -lc`。
-  - `ask_user` 只用于必须由用户决策、确认或补充的信息。
+  - `ask_user` 用于用户决策、确认或补充的信息。
 
 4. 使用 bash 的边界。
   - 可以使用 bash 做搜索、查看目录、运行测试、执行构建和必要的开发命令。

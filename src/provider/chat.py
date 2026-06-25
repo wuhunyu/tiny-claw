@@ -108,6 +108,7 @@ class OpenaiChat(BaseModel):
                     model=model_name,
                     messages=openai_messages,
                     tools=tool_defines,
+                    tool_choice="auto",
                 )
                 run.end(outputs={
                     "llm_res": openai_res,

@@ -31,7 +31,7 @@ class AskUser:
     def definition() -> ToolDefinition:
         return ToolDefinition(
             name=AskUser.name(),
-            description="需要用户进行决策, 遇到无法解决的问题, 或者需要执行高危动作时, 请求用户的帮助. 问题需要凝练, 且只能在其它 tool 无法处理时调用",
+            description="需要用户进行决策, 遇到无法解决的问题, 或者需要执行高危动作时, 请求用户的帮助. 问题需要凝练",
             readonly=AskUser.readonly(),
             input_schema={
                 "type": "object",
