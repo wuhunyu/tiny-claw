@@ -17,7 +17,8 @@ from src.context.recovery import ToolRecoveryManager
 from src.core.context import Context
 from src.engine.loop import AgentEngine
 from src.engine.session import SessionManager
-from src.provider.chat import MyChat
+from src.provider.chat import OpenaiChat
+from src.provider.chat_wrap import LLMProviderCostTrackerWrap
 from src.provider.interface import LLMProvider
 from src.schema.message import Message, ToolCall, ToolResult
 from src.tools.ask_user import AskUser
@@ -159,35 +160,6 @@ class DingTalkBotHandler(ChatbotHandler):
             )
             return AckMessage.STATUS_OK, 'ok'
 
-        # 延迟注册工具 ask_user
-        await self.registry.registry(
-            tool=AskUser(
-                channel_message=DingTalkBotChannelMessage(
-                    handler=self,
-                    incoming_message=incoming_message,
-                )
-            )
-        )
-
-        # 实例化一个 engine
-        agent_engine = AgentEngine(
-            provider=self.chat_client,
-            compactor=Compactor(),
-            registry=self.registry,
-            reporter=DingTalkBotReporter(
-                handler=self,
-                incoming_message=incoming_message,
-            ),
-            channel_message=DingTalkBotChannelMessage(
-                handler=self,
-                incoming_message=incoming_message,
-            ),
-            tool_recovery_manager=ToolRecoveryManager(tool_registry=self.registry),
-            work_dir=self.work_dir,
-            enable_thinking=self.enable_thinking,
-        )
-        self._engines[session_id] = agent_engine
-
         try:
             plan_model = self.prompt_composer.plan_model or False
             logger.info(f"计划模式 (Plan Mode): {plan_model}")
@@ -205,6 +177,41 @@ class DingTalkBotHandler(ChatbotHandler):
                     session_id=session_id,
                     work_dir=self.work_dir,
                 )
+
+                # 延迟注册工具 ask_user
+                await self.registry.registry(
+                    tool=AskUser(
+                        channel_message=DingTalkBotChannelMessage(
+                            handler=self,
+                            incoming_message=incoming_message,
+                        )
+                    )
+                )
+
+                # 使用 cost tracker
+                cost_tracker = LLMProviderCostTrackerWrap(
+                    provider=self.chat_client,
+                    session=session,
+                )
+
+                # 实例化一个 engine
+                agent_engine = AgentEngine(
+                    provider=cost_tracker,
+                    compactor=Compactor(),
+                    registry=self.registry,
+                    reporter=DingTalkBotReporter(
+                        handler=self,
+                        incoming_message=incoming_message,
+                    ),
+                    channel_message=DingTalkBotChannelMessage(
+                        handler=self,
+                        incoming_message=incoming_message,
+                    ),
+                    tool_recovery_manager=ToolRecoveryManager(tool_registry=self.registry),
+                    work_dir=self.work_dir,
+                    enable_thinking=self.enable_thinking,
+                )
+                self._engines[session_id] = agent_engine
 
                 with ls.trace(
                         name="tiny claw loop",
@@ -249,7 +256,7 @@ async def create_ding_talk_bot() -> DingTalkBot:
     work_dir = settings.work_dir
 
     # llm client
-    chat_client = MyChat(
+    chat_client = OpenaiChat(
         llm_provider=settings.llm_provider,
     )
 

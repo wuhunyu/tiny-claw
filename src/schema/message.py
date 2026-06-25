@@ -39,6 +39,7 @@ class Message(BaseModel):
 
 
 class TokenUsage(BaseModel):
+    model_name: str = Field(..., description="模型名称")
     completion_tokens: int = Field(default=0, description="完成 tokens")
     prompt_tokens: int = Field(default=0, description="提示 tokens")
     total_tokens: int = Field(default=0, description="总 tokens")

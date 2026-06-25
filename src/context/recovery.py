@@ -39,14 +39,14 @@ class ToolRecovery(BaseModel):
 
     def to_user_message(self, origin_error: str) -> str:
         lines = [
-            f"执行 tool 遇到如下错误: {origin_error}",
+            f"执行 tool {self.tool_call.name} 遇到如下错误: {origin_error}",
             "\n",
             "请按如下方案尝试进行恢复:",
             "当 置信度 为 high 或 medium 时, 请严格按照如下恢复方案进行恢复尝试",
             "当 置信度 为 low 时, 恢复方案作为参考意见",
+            f"- 置信度: {self.confidence.value}",
             f"- 恢复动作: {self.action.value}",
             f"- 恢复原因: {self.reason}",
-            f"- 置信度: {self.confidence.value}",
             *self._extra_message_lines(),
         ]
 

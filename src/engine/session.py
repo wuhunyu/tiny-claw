@@ -19,6 +19,13 @@ class Session:
     ):
         self.id = id
         self.work_dir = work_dir
+
+        # token 相关
+        self.total_cached_prompt_tokens = 0
+        self.total_prompt_tokens = 0
+        self.total_completion_tokens = 0
+        self.total_cost_cny = 0
+
         self.created_at = datetime.now()
         self.updated_at = self.created_at
         self._history = []
@@ -65,6 +72,18 @@ class Session:
             return len(self._history) > 0
         finally:
             await self._lock.release_read()
+
+    async def record_usage(
+            self,
+            cached_prompt_tokens=0,
+            prompt_tokens=0,
+            completion_tokens=0,
+            cost_cny=0,
+    ):
+        self.total_cached_prompt_tokens += cached_prompt_tokens
+        self.total_prompt_tokens += prompt_tokens
+        self.total_completion_tokens += completion_tokens
+        self.total_cost_cny += cost_cny
 
 
 class SessionManager:

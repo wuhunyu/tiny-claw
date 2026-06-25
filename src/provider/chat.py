@@ -15,7 +15,7 @@ from src.schema.message import Message, ToolDefinition, Role, ToolCall, TokenUsa
 logger = logging.getLogger(__name__)
 
 
-class MyChat(BaseModel):
+class OpenaiChat(BaseModel):
     llm_provider: Provider = Field(default=Provider.OPENAI, description="模型供应商")
     base_url: str = Field(default_factory=lambda: settings.llm_base_url, description="模型供应商的 API 地址")
     api_key: str = Field(default_factory=lambda: settings.llm_api_key, description="模型供应商的 API Key")
@@ -138,6 +138,7 @@ class MyChat(BaseModel):
                 tool_calls=res_tool_calls
             ),
             TokenUsage(
+                model_name=self.model,
                 completion_tokens=openai_res.usage.completion_tokens,
                 prompt_tokens=openai_res.usage.prompt_tokens,
                 total_tokens=openai_res.usage.total_tokens,
